@@ -1,10 +1,10 @@
 # Rust Maze Generator
 
-A Rust CLI tool that generates solvable mazes on **rectangular, triangular, or hexagonal grids** as SVG files with automatic solution generation.
+A Rust CLI tool that generates solvable mazes on **rectangular, triangular, hexagonal, or octagonal grids** as SVG files with automatic solution generation.
 
 ## Features
 
-- **Three grid types**: Rectangular (4 neighbors), Triangular (3 neighbors), Hexagonal (6 neighbors)
+- **Four grid types**: Rectangular (4 neighbors), Triangular (3 neighbors), Hexagonal (6 neighbors), Octagonal (4-8 neighbors)
 - **Generic maze implementation**: Uses Rust traits and generics for grid-agnostic algorithms
 - **Perfect mazes**: Exactly one path between any two points
 - **Automatic solving**: BFS pathfinding with red solution path
@@ -23,6 +23,9 @@ cargo build --release
 
 # Generate a hexagonal maze
 ./target/release/maze -W 30 -H 30 -g hexagonal -o hex_maze.svg
+
+# Generate an octagonal maze
+./target/release/maze -W 30 -H 30 -g octagonal -o oct_maze.svg
 
 # Generate with debug cell numbers
 ./target/release/maze -W 10 -H 10 -d -o debug_maze.svg
@@ -75,6 +78,19 @@ Sample mazes are included in the `examples/` directory (all 20×20 cells):
 </tr>
 </table>
 
+### Octagonal Grid (Truncated Square Tiling)
+
+<table>
+<tr>
+<td><img src="examples/octagonal_20x20.svg" width="400" alt="Octagonal maze"></td>
+<td><img src="examples/octagonal_20x20_solution.svg" width="400" alt="Octagonal maze solution"></td>
+</tr>
+<tr>
+<td align="center">Unsolved</td>
+<td align="center">Solved</td>
+</tr>
+</table>
+
 ## Command-Line Arguments
 
 | Flag | Short | Description | Required | Default |
@@ -83,7 +99,7 @@ Sample mazes are included in the `examples/` directory (all 20×20 cells):
 | `--height` | `-H` | Height of maze in cells | Yes | - |
 | `--output` | `-o` | Output SVG file path | Yes | - |
 | `--tunnel-width` | `-t` | Width of tunnels in pixels | No | 20 |
-| `--grid-type` | `-g` | Grid type: rectangular, triangular, hexagonal | No | rectangular |
+| `--grid-type` | `-g` | Grid type: rectangular, triangular, hexagonal, octagonal | No | rectangular |
 | `--debug` | `-d` | Enable debug mode (show cell numbers) | No | false |
 
 Note: `-W` and `-H` use capital letters to avoid conflicts with common short flags.
@@ -135,6 +151,14 @@ Each in its own file under `src/shapes/`:
 - 6 neighbors per cell: N, S, NE, SE, NW, SW
 - Flat-top hexagons with odd columns offset down
 - Neighbors indexed as: 0=N, 1=S, 2=NE, 3=SE, 4=NW, 5=SW
+
+**OctShape** (oct_shape.rs):
+- Truncated square tiling with octagons and squares
+- Octagons (8 neighbors): N, S, E, W, NE, SE, NW, SW
+- Squares (4 neighbors): N, S, E, W
+- Checkerboard pattern: octagon when (x+y) is even, square when odd
+- All edges have equal length for proper tessellation
+- Neighbors indexed - Octagons: 0=N, 1=S, 2=E, 3=W, 4=NE, 5=SE, 6=NW, 7=SW; Squares: 0=N, 1=S, 2=E, 3=W
 
 ## Algorithms
 
@@ -191,6 +215,12 @@ Each in its own file under `src/shapes/`:
 - Flat-top hexagons
 - Odd columns offset down by half a hex height
 - Width advances by 3/4 of hex width per column
+
+### Octagonal Grids
+- Truncated square tiling (octagons + squares)
+- Regular octagons and squares with equal edge lengths
+- Center-to-center spacing = edge_length/2 × (2 + √2)
+- Checkerboard pattern alternates cell types
 
 ### Solution Path
 - Drawn as red SVG path (3px stroke width, round endcaps)

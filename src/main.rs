@@ -6,13 +6,14 @@ mod genericmaze;
 mod shapes;
 
 use genericmaze::{GenericMaze, Shape};
-use shapes::{RectShape, TriShape, HexShape};
+use shapes::{RectShape, TriShape, HexShape, OctShape};
 
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 enum GridType {
     Rectangular,
     Triangular,
     Hexagonal,
+    Octagonal,
 }
 
 #[derive(Parser)]
@@ -35,13 +36,17 @@ struct Args {
     #[arg(short, long, default_value = "20")]
     tunnel_width: usize,
 
-    /// Grid type: rectangular, triangular, or hexagonal (default: rectangular)
+    /// Grid type: rectangular, triangular, hexagonal, or octagonal (default: rectangular)
     #[arg(short, long, value_enum, default_value = "rectangular")]
     grid_type: GridType,
 
     /// Enable debug mode (show cell numbers and print neighbor info)
     #[arg(short, long, default_value = "false")]
     debug: bool,
+
+    /// Render all walls (skip maze generation)
+    #[arg(long, default_value = "false")]
+    all_walls: bool,
 }
 
 fn main() -> std::io::Result<()> {
@@ -64,6 +69,9 @@ fn main() -> std::io::Result<()> {
         GridType::Hexagonal => {
             process_maze::<HexShape>(&args)?;
         }
+        GridType::Octagonal => {
+            process_maze::<OctShape>(&args)?;
+        }
     }
 
     Ok(())
@@ -74,11 +82,19 @@ fn process_maze<S: Shape>(args: &Args) -> std::io::Result<()> {
     if args.debug {
         S::print_debug_info(&maze);
     }
-    maze.generate();
-    let solution = maze.solve();
-    let svg_content = S::to_svg(&maze, args.tunnel_width, None, args.debug);
-    let svg_solution = S::to_svg(&maze, args.tunnel_width, Some(&solution), args.debug);
-    write_output(&args.output, &svg_content, &svg_solution)?;
+
+    if !args.all_walls {
+        maze.generate();
+        let solution = maze.solve();
+        let svg_content = S::to_svg(&maze, args.tunnel_width, None, args.debug);
+        let svg_solution = S::to_svg(&maze, args.tunnel_width, Some(&solution), args.debug);
+        write_output(&args.output, &svg_content, &svg_solution)?;
+    } else {
+        // Render all walls without generating maze
+        let svg_content = S::to_svg(&maze, args.tunnel_width, None, args.debug);
+        write_output(&args.output, &svg_content, &svg_content)?;
+    }
+
     Ok(())
 }
 

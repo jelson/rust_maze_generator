@@ -2,7 +2,9 @@
 mod rect_shape;
 mod tri_shape;
 mod hex_shape;
+mod oct_shape;
 
 pub use rect_shape::RectShape;
 pub use tri_shape::TriShape;
 pub use hex_shape::HexShape;
+pub use oct_shape::OctShape;
