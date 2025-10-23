@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Maze Generator & Solver</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 0.9em;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-weight: 600;
+            color: #555;
+            font-size: 0.9em;
+        }
+
+        input[type="number"] {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.2s;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button.primary {
+            background: #667eea;
+            color: white;
+        }
+
+        button.primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button.secondary {
+            background: #48bb78;
+            color: white;
+        }
+
+        button.secondary:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+        }
+
+        button.danger {
+            background: #f56565;
+            color: white;
+        }
+
+        button.danger:hover {
+            background: #e53e3e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 101, 101, 0.4);
+        }
+
+        button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button:disabled:hover {
+            background: #cbd5e0;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .maze-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            overflow: auto;
+            position: relative;
+        }
+
+        #mazeDisplay {
+            max-width: 100%;
+            height: auto;
+            cursor: crosshair;
+        }
+
+        #mazeDisplay.won {
+            cursor: default;
+        }
+
+        .game-status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fef5e7;
+            border-left: 4px solid #f39c12;
+            border-radius: 4px;
+            font-size: 1em;
+            color: #7d6608;
+            font-weight: 600;
+        }
+
+        .game-status.won {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e6fffa;
+            border-left: 4px solid #48bb78;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #234e52;
+        }
+
+        .info strong {
+            color: #1a202c;
+        }
+
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff5f5;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #1a202c;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin: 5px 0;
+        }
+
+        /* Marching ants animation for solution path */
+        @keyframes marchingAnts {
+            0% {
+                stroke-dashoffset: 20;
+            }
+            100% {
+                stroke-dashoffset: 0;
+            }
+        }
+
+        .solution-path {
+            stroke-dasharray: 10 10;
+            animation: marchingAnts 0.5s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Interactive Maze Generator & Solver</h1>
+        <p class="subtitle">Generate perfect mazes and solve them interactively in your browser</p>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="width">Width (cells):</label>
+                <input type="number" id="width" min="5" max="100" value="20">
+            </div>
+            <div class="control-group">
+                <label for="height">Height (cells):</label>
+                <input type="number" id="height" min="5" max="100" value="20">
+            </div>
+            <div class="control-group">
+                <label for="cellSize">Cell Size (px):</label>
+                <input type="number" id="cellSize" min="10" max="50" value="20">
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button class="primary" onclick="generateNewMaze()">🎲 Generate New Maze</button>
+            <button class="secondary" onclick="resetGame()">🔄 Reset Game</button>
+            <button class="secondary" onclick="showSolution()">💡 Show Solution</button>
+            <button class="danger" onclick="hideSolution()">👁️ Hide Solution</button>
+            <button class="secondary" onclick="downloadMaze()">💾 Download Maze</button>
+            <button class="secondary" onclick="downloadSolution()">💾 Download Solution</button>
+        </div>
+
+        <div id="gameStatus" class="game-status" style="display: none;"></div>
+
+        <div class="maze-container">
+            <svg id="mazeDisplay"></svg>
+        </div>
+
+        <div class="info" id="info" style="display: none;">
+            <strong>Maze generated!</strong> <span id="infoText"></span>
+        </div>
+
+        <div class="instructions">
+            <h3>📖 How to Use:</h3>
+            <ul>
+                <li><strong>Generate New Maze:</strong> Creates a random perfect maze with the specified dimensions</li>
+                <li><strong>Play the Game:</strong> Click and drag through the maze from the entrance (top-left) to the exit (bottom-right). Your path is drawn in blue!</li>
+                <li><strong>Reset Game:</strong> Clear your current path and try again</li>
+                <li><strong>Show Solution:</strong> Displays the shortest path in red (ends the game)</li>
+                <li><strong>Hide Solution:</strong> Removes the solution path from display</li>
+                <li><strong>Download:</strong> Save the maze or solution as SVG files</li>
+                <li><strong>Cell Size:</strong> Adjust to make the maze bigger or smaller</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Direction enum
+        const Direction = {
+            NORTH: 0,
+            SOUTH: 1,
+            EAST: 2,
+            WEST: 3
+        };
+
+        // Cell class
+        class Cell {
+            constructor() {
+                this.walls = [true, true, true, true]; // N, S, E, W
+            }
+
+            removeWall(direction) {
+                this.walls[direction] = false;
+            }
+
+            hasWall(direction) {
+                return this.walls[direction];
+            }
+        }
+
+        // Maze class
+        class Maze {
+            constructor(width, height) {
+                this.width = width;
+                this.height = height;
+                this.cells = [];
+
+                // Initialize cells
+                for (let y = 0; y < height; y++) {
+                    this.cells[y] = [];
+                    for (let x = 0; x < width; x++) {
+                        this.cells[y][x] = new Cell();
+                    }
+                }
+            }
+
+            generate() {
+                const visited = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+                const stack = [];
+
+                // Start at (0, 0)
+                stack.push([0, 0]);
+                visited[0][0] = true;
+
+                while (stack.length > 0) {
+                    const [y, x] = stack[stack.length - 1];
+                    const unvisitedNeighbors = [];
+
+                    // Check all neighbors
+                    const directions = [
+                        [Direction.NORTH, y - 1, x],
+                        [Direction.SOUTH, y + 1, x],
+                        [Direction.EAST, y, x + 1],
+                        [Direction.WEST, y, x - 1]
+                    ];
+
+                    for (const [dir, ny, nx] of directions) {
+                        if (ny >= 0 && ny < this.height && nx >= 0 && nx < this.width && !visited[ny][nx]) {
+                            unvisitedNeighbors.push([dir, ny, nx]);
+                        }
+                    }
+
+                    if (unvisitedNeighbors.length === 0) {
+                        stack.pop();
+                    } else {
+                        // Pick random unvisited neighbor
+                        const [direction, ny, nx] = unvisitedNeighbors[Math.floor(Math.random() * unvisitedNeighbors.length)];
+
+                        // Remove walls
+                        this.cells[y][x].removeWall(direction);
+                        this.cells[ny][nx].removeWall(this.oppositeDirection(direction));
+
+                        visited[ny][nx] = true;
+                        stack.push([ny, nx]);
+                    }
+                }
+            }
+
+            oppositeDirection(dir) {
+                switch(dir) {
+                    case Direction.NORTH: return Direction.SOUTH;
+                    case Direction.SOUTH: return Direction.NORTH;
+                    case Direction.EAST: return Direction.WEST;
+                    case Direction.WEST: return Direction.EAST;
+                }
+            }
+
+            solve() {
+                // BFS to find shortest path
+                const queue = [[0, 0]];
+                const visited = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+                const parent = new Map();
+
+                visited[0][0] = true;
+                const endY = this.height - 1;
+                const endX = this.width - 1;
+
+                while (queue.length > 0) {
+                    const [y, x] = queue.shift();
+
+                    if (y === endY && x === endX) {
+                        break;
+                    }
+
+                    // Check all directions
+                    const directions = [
+                        [Direction.NORTH, y - 1, x],
+                        [Direction.SOUTH, y + 1, x],
+                        [Direction.EAST, y, x + 1],
+                        [Direction.WEST, y, x - 1]
+                    ];
+
+                    for (const [dir, ny, nx] of directions) {
+                        if (!this.cells[y][x].hasWall(dir) &&
+                            ny >= 0 && ny < this.height &&
+                            nx >= 0 && nx < this.width &&
+                            !visited[ny][nx]) {
+                            visited[ny][nx] = true;
+                            parent.set(`${ny},${nx}`, [y, x]);
+                            queue.push([ny, nx]);
+                        }
+                    }
+                }
+
+                // Reconstruct path
+                const path = [];
+                let current = [endY, endX];
+                path.push(current);
+
+                while (current[0] !== 0 || current[1] !== 0) {
+                    const key = `${current[0]},${current[1]}`;
+                    if (!parent.has(key)) break;
+                    current = parent.get(key);
+                    path.push(current);
+                }
+
+                path.reverse();
+                return path;
+            }
+
+            toSVG(cellSize, solutionPath = null) {
+                const wallThickness = 2;
+                const totalCellSize = cellSize + wallThickness;
+                const svgWidth = this.width * totalCellSize + wallThickness;
+                const svgHeight = this.height * totalCellSize + wallThickness;
+
+                let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">`;
+                svg += `<rect width="${svgWidth}" height="${svgHeight}" fill="white"/>`;
+                svg += `<g stroke="black" stroke-width="${wallThickness}" stroke-linecap="square">`;
+
+                // Draw walls
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        const cellX = x * totalCellSize + wallThickness;
+                        const cellY = y * totalCellSize + wallThickness;
+
+                        // North wall (skip if entrance at top-left)
+                        if (this.cells[y][x].hasWall(Direction.NORTH)) {
+                            if (!(y === 0 && x === 0)) {
+                                svg += `<line x1="${cellX}" y1="${cellY}" x2="${cellX + totalCellSize}" y2="${cellY}"/>`;
+                            }
+                        }
+
+                        // South wall (skip if exit at bottom-right)
+                        if (this.cells[y][x].hasWall(Direction.SOUTH)) {
+                            if (!(y === this.height - 1 && x === this.width - 1)) {
+                                svg += `<line x1="${cellX}" y1="${cellY + totalCellSize}" x2="${cellX + totalCellSize}" y2="${cellY + totalCellSize}"/>`;
+                            }
+                        }
+
+                        // West wall (skip if entrance at top-left)
+                        if (this.cells[y][x].hasWall(Direction.WEST)) {
+                            if (!(y === 0 && x === 0)) {
+                                svg += `<line x1="${cellX}" y1="${cellY}" x2="${cellX}" y2="${cellY + totalCellSize}"/>`;
+                            }
+                        }
+
+                        // East wall (skip if exit at bottom-right)
+                        if (this.cells[y][x].hasWall(Direction.EAST)) {
+                            if (!(y === this.height - 1 && x === this.width - 1)) {
+                                svg += `<line x1="${cellX + totalCellSize}" y1="${cellY}" x2="${cellX + totalCellSize}" y2="${cellY + totalCellSize}"/>`;
+                            }
+                        }
+                    }
+                }
+
+                svg += `</g>`;
+
+                // Draw solution path if provided
+                if (solutionPath && solutionPath.length > 0) {
+                    svg += `<g stroke="red" stroke-width="3" stroke-linecap="round" fill="none">`;
+                    svg += `<path class="solution-path" d="`;
+
+                    for (let i = 0; i < solutionPath.length; i++) {
+                        const [y, x] = solutionPath[i];
+                        const centerX = x * totalCellSize + wallThickness + totalCellSize / 2;
+                        const centerY = y * totalCellSize + wallThickness + totalCellSize / 2;
+
+                        if (i === 0) {
+                            svg += `M ${centerX} ${centerY} `;
+                        } else {
+                            svg += `L ${centerX} ${centerY} `;
+                        }
+                    }
+
+                    svg += `"/>`;
+                    svg += `</g>`;
+                }
+
+                svg += `</svg>`;
+                return svg;
+            }
+        }
+
+        // Global state
+        let currentMaze = null;
+        let currentSolution = null;
+        let solutionVisible = false;
+        let userPath = [];
+        let isDrawing = false;
+        let gameWon = false;
+        let userPathElement = null;
+
+        // Generate new maze
+        function generateNewMaze() {
+            const width = parseInt(document.getElementById('width').value);
+            const height = parseInt(document.getElementById('height').value);
+            const cellSize = parseInt(document.getElementById('cellSize').value);
+
+            if (width < 5 || width > 100 || height < 5 || height > 100) {
+                alert('Width and height must be between 5 and 100');
+                return;
+            }
+
+            currentMaze = new Maze(width, height);
+            currentMaze.generate();
+            currentSolution = currentMaze.solve();
+            solutionVisible = false;
+            userPath = [];
+            gameWon = false;
+
+            renderMaze();
+            setupInteraction();
+
+            // Show info
+            const info = document.getElementById('info');
+            const infoText = document.getElementById('infoText');
+            infoText.textContent = `${width}×${height} maze created. Solution path length: ${currentSolution.length} cells.`;
+            info.style.display = 'block';
+
+            // Show game status
+            const gameStatus = document.getElementById('gameStatus');
+            gameStatus.textContent = '🎮 Click and drag to solve the maze! Start at the top-left entrance.';
+            gameStatus.className = 'game-status';
+            gameStatus.style.display = 'block';
+        }
+
+        // Render maze
+        function renderMaze() {
+            const cellSize = parseInt(document.getElementById('cellSize').value);
+            const mazeDisplay = document.getElementById('mazeDisplay');
+            const svgContent = currentMaze.toSVG(cellSize, solutionVisible ? currentSolution : null);
+            mazeDisplay.outerHTML = svgContent.replace('<svg', '<svg id="mazeDisplay"');
+        }
+
+        // Reset game
+        function resetGame() {
+            if (!currentMaze) {
+                return;
+            }
+            userPath = [];
+            gameWon = false;
+            solutionVisible = false;
+            renderMaze();
+            setupInteraction();
+
+            const gameStatus = document.getElementById('gameStatus');
+            gameStatus.textContent = '🎮 Click and drag to solve the maze! Start at the top-left entrance.';
+            gameStatus.className = 'game-status';
+            gameStatus.style.display = 'block';
+        }
+
+        // Show solution
+        function showSolution() {
+            if (!currentMaze) {
+                alert('Please generate a maze first!');
+                return;
+            }
+            solutionVisible = true;
+            gameWon = true;
+            renderMaze();
+
+            const gameStatus = document.getElementById('gameStatus');
+            gameStatus.textContent = '💡 Solution shown! Generate a new maze to play again.';
+            gameStatus.className = 'game-status';
+            gameStatus.style.display = 'block';
+        }
+
+        // Hide solution
+        function hideSolution() {
+            if (!currentMaze) {
+                return;
+            }
+            solutionVisible = false;
+            if (!gameWon) {
+                setupInteraction();
+            }
+            renderMaze();
+        }
+
+        // Download maze
+        function downloadMaze() {
+            if (!currentMaze) {
+                alert('Please generate a maze first!');
+                return;
+            }
+            const cellSize = parseInt(document.getElementById('cellSize').value);
+            const svgContent = currentMaze.toSVG(cellSize, null);
+            downloadSVG(svgContent, 'maze.svg');
+        }
+
+        // Download solution
+        function downloadSolution() {
+            if (!currentMaze) {
+                alert('Please generate a maze first!');
+                return;
+            }
+            const cellSize = parseInt(document.getElementById('cellSize').value);
+            const svgContent = currentMaze.toSVG(cellSize, currentSolution);
+            downloadSVG(svgContent, 'maze_solution.svg');
+        }
+
+        // Helper to download SVG
+        function downloadSVG(svgContent, filename) {
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Get cell coordinates from mouse position
+        function getCellFromPoint(x, y, svg) {
+            const cellSize = parseInt(document.getElementById('cellSize').value);
+            const wallThickness = 2;
+            const totalCellSize = cellSize + wallThickness;
+
+            const rect = svg.getBoundingClientRect();
+            const svgX = x - rect.left;
+            const svgY = y - rect.top;
+
+            const cellX = Math.floor((svgX - wallThickness) / totalCellSize);
+            const cellY = Math.floor((svgY - wallThickness) / totalCellSize);
+
+            if (cellX >= 0 && cellX < currentMaze.width && cellY >= 0 && cellY < currentMaze.height) {
+                return [cellY, cellX];
+            }
+            return null;
+        }
+
+        // Check if two cells are adjacent and connected (no wall between them)
+        function areCellsConnected(cell1, cell2) {
+            const [y1, x1] = cell1;
+            const [y2, x2] = cell2;
+
+            // Check if cells are adjacent
+            const dy = y2 - y1;
+            const dx = x2 - x1;
+
+            if (Math.abs(dy) + Math.abs(dx) !== 1) {
+                return false; // Not adjacent
+            }
+
+            // Determine direction
+            let direction;
+            if (dy === -1) direction = Direction.NORTH;
+            else if (dy === 1) direction = Direction.SOUTH;
+            else if (dx === 1) direction = Direction.EAST;
+            else if (dx === -1) direction = Direction.WEST;
+
+            // Check if there's a wall
+            return !currentMaze.cells[y1][x1].hasWall(direction);
+        }
+
+        // Update user path visualization
+        function updateUserPath() {
+            if (userPath.length === 0) {
+                if (userPathElement) {
+                    userPathElement.remove();
+                    userPathElement = null;
+                }
+                return;
+            }
+
+            const cellSize = parseInt(document.getElementById('cellSize').value);
+            const wallThickness = 2;
+            const totalCellSize = cellSize + wallThickness;
+
+            const svg = document.getElementById('mazeDisplay');
+
+            // Remove old path
+            if (userPathElement) {
+                userPathElement.remove();
+            }
+
+            // Create new path
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('stroke', 'blue');
+            g.setAttribute('stroke-width', '3');
+            g.setAttribute('stroke-linecap', 'round');
+            g.setAttribute('fill', 'none');
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            let d = '';
+
+            for (let i = 0; i < userPath.length; i++) {
+                const [y, x] = userPath[i];
+                const centerX = x * totalCellSize + wallThickness + totalCellSize / 2;
+                const centerY = y * totalCellSize + wallThickness + totalCellSize / 2;
+
+                if (i === 0) {
+                    d += `M ${centerX} ${centerY} `;
+                } else {
+                    d += `L ${centerX} ${centerY} `;
+                }
+            }
+
+            path.setAttribute('d', d);
+            g.appendChild(path);
+            svg.appendChild(g);
+            userPathElement = g;
+        }
+
+        // Check if user won
+        function checkWin() {
+            if (userPath.length === 0) return;
+
+            const lastCell = userPath[userPath.length - 1];
+            const [y, x] = lastCell;
+
+            if (y === currentMaze.height - 1 && x === currentMaze.width - 1) {
+                gameWon = true;
+                const gameStatus = document.getElementById('gameStatus');
+                gameStatus.textContent = `🎉 Congratulations! You solved the maze in ${userPath.length} moves! (Optimal: ${currentSolution.length})`;
+                gameStatus.className = 'game-status won';
+                gameStatus.style.display = 'block';
+            }
+        }
+
+        // Setup interactive drawing
+        function setupInteraction() {
+            const svg = document.getElementById('mazeDisplay');
+
+            // Remove old listeners by replacing the element
+            const newSvg = svg.cloneNode(true);
+            svg.parentNode.replaceChild(newSvg, svg);
+
+            const mazeDisplay = document.getElementById('mazeDisplay');
+
+            function startDrawing(e) {
+                if (gameWon) return;
+
+                e.preventDefault();
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+                const cell = getCellFromPoint(clientX, clientY, mazeDisplay);
+
+                if (cell) {
+                    const [y, x] = cell;
+
+                    // Check if starting at entrance (for new path)
+                    if (userPath.length === 0 && y === 0 && x === 0) {
+                        isDrawing = true;
+                        userPath = [cell];
+                        updateUserPath();
+                        return;
+                    }
+
+                    // Check if clicking on the last cell of existing path (to continue)
+                    if (userPath.length > 0) {
+                        const lastCell = userPath[userPath.length - 1];
+                        if (y === lastCell[0] && x === lastCell[1]) {
+                            isDrawing = true;
+                            return;
+                        }
+
+                        // Also allow clicking on any cell in the path to continue from there
+                        for (let i = userPath.length - 1; i >= 0; i--) {
+                            if (userPath[i][0] === y && userPath[i][1] === x) {
+                                isDrawing = true;
+                                // Truncate path to this point
+                                userPath = userPath.slice(0, i + 1);
+                                updateUserPath();
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            function continueDrawing(e) {
+                if (!isDrawing || gameWon) return;
+
+                e.preventDefault();
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+                const cell = getCellFromPoint(clientX, clientY, mazeDisplay);
+
+                if (cell) {
+                    const lastCell = userPath[userPath.length - 1];
+
+                    // Check if it's the same cell
+                    if (cell[0] === lastCell[0] && cell[1] === lastCell[1]) {
+                        return;
+                    }
+
+                    // Check if we're backtracking
+                    if (userPath.length > 1) {
+                        const prevCell = userPath[userPath.length - 2];
+                        if (cell[0] === prevCell[0] && cell[1] === prevCell[1]) {
+                            // Backtrack - remove last cell
+                            userPath.pop();
+                            updateUserPath();
+                            return;
+                        }
+                    }
+
+                    // Check if cells are connected
+                    if (areCellsConnected(lastCell, cell)) {
+                        userPath.push(cell);
+                        updateUserPath();
+                        checkWin();
+                    }
+                }
+            }
+
+            function stopDrawing(e) {
+                isDrawing = false;
+            }
+
+            // Mouse events
+            mazeDisplay.addEventListener('mousedown', startDrawing);
+            mazeDisplay.addEventListener('mousemove', continueDrawing);
+            mazeDisplay.addEventListener('mouseup', stopDrawing);
+            mazeDisplay.addEventListener('mouseleave', stopDrawing);
+
+            // Touch events
+            mazeDisplay.addEventListener('touchstart', startDrawing);
+            mazeDisplay.addEventListener('touchmove', continueDrawing);
+            mazeDisplay.addEventListener('touchend', stopDrawing);
+        }
+
+        // Generate initial maze on load
+        window.addEventListener('load', () => {
+            generateNewMaze();
+        });
+    </script>
+</body>
+</html>
