@@ -16,6 +16,12 @@ enum GridType {
     Octagonal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
+enum Difficulty {
+    Easy,
+    Hard,
+}
+
 #[derive(Parser)]
 #[command(name = "maze")]
 #[command(about = "Generate a maze in SVG format", long_about = None)]
@@ -47,6 +53,10 @@ struct Args {
     /// Render all walls (skip maze generation)
     #[arg(long, default_value = "false")]
     all_walls: bool,
+
+    /// Difficulty: easy (long corridors) or hard (more branching) (default: easy)
+    #[arg(short = 'D', long, value_enum, default_value = "easy")]
+    difficulty: Difficulty,
 }
 
 fn main() -> std::io::Result<()> {
@@ -84,7 +94,8 @@ fn process_maze<S: Shape>(args: &Args) -> std::io::Result<()> {
     }
 
     if !args.all_walls {
-        maze.generate();
+        let is_hard = args.difficulty == Difficulty::Hard;
+        maze.generate(is_hard);
         let solution = maze.solve();
         let svg_content = S::to_svg(&maze, args.tunnel_width, None, args.debug);
         let svg_solution = S::to_svg(&maze, args.tunnel_width, Some(&solution), args.debug);
@@ -123,19 +134,23 @@ mod tests {
 
     #[test]
     fn test_all_shapes_all_modes() -> std::io::Result<()> {
-        // Test cases: 4 shapes × 2 modes (debug and normal) = 8 test cases
+        // Test cases: 4 shapes × 3 modes (debug, normal easy, normal hard) = 12 test cases
         let test_cases = vec![
-            ("rectangular", "debug", 5, 5, true),
-            ("rectangular", "normal", 75, 75, false),
-            ("triangular", "debug", 5, 5, true),
-            ("triangular", "normal", 75, 75, false),
-            ("hexagonal", "debug", 5, 5, true),
-            ("hexagonal", "normal", 75, 75, false),
-            ("octagonal", "debug", 5, 5, true),
-            ("octagonal", "normal", 75, 75, false),
+            ("rectangular", "debug", 5, 5, true, Difficulty::Easy),
+            ("rectangular", "normal", 75, 75, false, Difficulty::Easy),
+            ("rectangular", "normal_hard", 75, 75, false, Difficulty::Hard),
+            ("triangular", "debug", 5, 5, true, Difficulty::Easy),
+            ("triangular", "normal", 75, 75, false, Difficulty::Easy),
+            ("triangular", "normal_hard", 75, 75, false, Difficulty::Hard),
+            ("hexagonal", "debug", 5, 5, true, Difficulty::Easy),
+            ("hexagonal", "normal", 75, 75, false, Difficulty::Easy),
+            ("hexagonal", "normal_hard", 75, 75, false, Difficulty::Hard),
+            ("octagonal", "debug", 5, 5, true, Difficulty::Easy),
+            ("octagonal", "normal", 75, 75, false, Difficulty::Easy),
+            ("octagonal", "normal_hard", 75, 75, false, Difficulty::Hard),
         ];
 
-        for (shape_name, mode, width, height, debug) in test_cases {
+        for (shape_name, mode, width, height, debug, difficulty) in test_cases {
             let output_file = format!("test_{}_{}x{}_{}.svg", shape_name, width, height, mode);
 
             println!("Generating {} maze ({}x{}, {} mode)...", shape_name, width, height, mode);
@@ -157,6 +172,7 @@ mod tests {
                 },
                 debug,
                 all_walls: false,
+                difficulty,
             };
 
             match args.grid_type {
@@ -173,7 +189,7 @@ mod tests {
             assert!(fs::metadata(&solution_file).is_ok(), "Solution SVG file should exist");
         }
 
-        println!("\nAll 8 test cases completed successfully!");
+        println!("\nAll 12 test cases completed successfully!");
         Ok(())
     }
 }

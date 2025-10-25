@@ -5,6 +5,7 @@ A Rust CLI tool that generates solvable mazes on **rectangular, triangular, hexa
 ## Features
 
 - **Four grid types**: Rectangular (4 neighbors), Triangular (3 neighbors), Hexagonal (6 neighbors), Octagonal (4-8 neighbors)
+- **Two difficulty levels**: Easy (long winding corridors) and Hard (more branching/dead ends)
 - **Generic maze implementation**: Uses Rust traits and generics for grid-agnostic algorithms
 - **Perfect mazes**: Exactly one path between any two points
 - **Automatic solving**: BFS pathfinding with red solution path
@@ -18,8 +19,11 @@ A Rust CLI tool that generates solvable mazes on **rectangular, triangular, hexa
 # Build the project
 cargo build --release
 
-# Generate a 50x50 rectangular maze
+# Generate a 50x50 rectangular maze (easy difficulty)
 ./target/release/maze -W 50 -H 50 -o maze.svg
+
+# Generate a harder maze with more branching
+./target/release/maze -W 50 -H 50 -D hard -o maze_hard.svg
 
 # Generate a hexagonal maze
 ./target/release/maze -W 30 -H 30 -g hexagonal -o hex_maze.svg
@@ -37,18 +41,18 @@ Each run generates two files:
 
 ## Example Output
 
-Sample mazes are included in the `examples/` directory (all 20×20 cells):
+Sample mazes are included in the `examples/` directory (all 20×20 cells). Compare Easy (long corridors) vs Hard (more branching):
 
 ### Rectangular Grid
 
 <table>
 <tr>
-<td><img src="examples/rect_20x20.svg" width="400" alt="Rectangular maze"></td>
-<td><img src="examples/rect_20x20_solution.svg" width="400" alt="Rectangular maze solution"></td>
+<td><img src="examples/rect_20x20_easy_solution.svg" width="400" alt="Easy rectangular maze"></td>
+<td><img src="examples/rect_20x20_hard_solution.svg" width="400" alt="Hard rectangular maze"></td>
 </tr>
 <tr>
-<td align="center">Unsolved</td>
-<td align="center">Solved</td>
+<td align="center">Easy</td>
+<td align="center">Hard</td>
 </tr>
 </table>
 
@@ -56,12 +60,12 @@ Sample mazes are included in the `examples/` directory (all 20×20 cells):
 
 <table>
 <tr>
-<td><img src="examples/tri_20x20.svg" width="400" alt="Triangular maze"></td>
-<td><img src="examples/tri_20x20_solution.svg" width="400" alt="Triangular maze solution"></td>
+<td><img src="examples/tri_20x20_easy_solution.svg" width="400" alt="Easy triangular maze"></td>
+<td><img src="examples/tri_20x20_hard_solution.svg" width="400" alt="Hard triangular maze"></td>
 </tr>
 <tr>
-<td align="center">Unsolved</td>
-<td align="center">Solved</td>
+<td align="center">Easy</td>
+<td align="center">Hard</td>
 </tr>
 </table>
 
@@ -69,12 +73,12 @@ Sample mazes are included in the `examples/` directory (all 20×20 cells):
 
 <table>
 <tr>
-<td><img src="examples/hex_20x20.svg" width="400" alt="Hexagonal maze"></td>
-<td><img src="examples/hex_20x20_solution.svg" width="400" alt="Hexagonal maze solution"></td>
+<td><img src="examples/hex_20x20_easy_solution.svg" width="400" alt="Easy hexagonal maze"></td>
+<td><img src="examples/hex_20x20_hard_solution.svg" width="400" alt="Hard hexagonal maze"></td>
 </tr>
 <tr>
-<td align="center">Unsolved</td>
-<td align="center">Solved</td>
+<td align="center">Easy</td>
+<td align="center">Hard</td>
 </tr>
 </table>
 
@@ -82,12 +86,12 @@ Sample mazes are included in the `examples/` directory (all 20×20 cells):
 
 <table>
 <tr>
-<td><img src="examples/octagonal_20x20.svg" width="400" alt="Octagonal maze"></td>
-<td><img src="examples/octagonal_20x20_solution.svg" width="400" alt="Octagonal maze solution"></td>
+<td><img src="examples/octagonal_20x20_easy_solution.svg" width="400" alt="Easy octagonal maze"></td>
+<td><img src="examples/octagonal_20x20_hard_solution.svg" width="400" alt="Hard octagonal maze"></td>
 </tr>
 <tr>
-<td align="center">Unsolved</td>
-<td align="center">Solved</td>
+<td align="center">Easy</td>
+<td align="center">Hard</td>
 </tr>
 </table>
 
@@ -100,9 +104,10 @@ Sample mazes are included in the `examples/` directory (all 20×20 cells):
 | `--output` | `-o` | Output SVG file path | Yes | - |
 | `--tunnel-width` | `-t` | Width of tunnels in pixels | No | 20 |
 | `--grid-type` | `-g` | Grid type: rectangular, triangular, hexagonal, octagonal | No | rectangular |
+| `--difficulty` | `-D` | Difficulty: easy (long corridors), hard (more branching) | No | easy |
 | `--debug` | `-d` | Enable debug mode (show cell numbers) | No | false |
 
-Note: `-W` and `-H` use capital letters to avoid conflicts with common short flags.
+Note: `-W`, `-H`, and `-D` use capital letters to avoid conflicts with common short flags.
 
 ## Architecture
 
@@ -118,7 +123,7 @@ Generic maze structure parameterized by shape type:
   - `_shape`: PhantomData marker for the shape type
 - **Methods**:
   - `new()`: Creates maze and initializes neighbor relationships
-  - `generate()`: Recursive backtracking maze generation
+  - `generate(is_hard)`: Frontier-based maze generation with difficulty selection
   - `solve()`: BFS pathfinding from cell 0 to last cell
   - `cell_index()`, `cell_coords()`: Coordinate conversion helpers
 
@@ -162,26 +167,43 @@ Each in its own file under `src/shapes/`:
 
 ## Algorithms
 
-### Maze Generation: Recursive Backtracking
+### Maze Generation: Frontier-Based with Difficulty Levels
 
-**Algorithm**: Depth-first search with backtracking
+Both difficulty levels use the same core algorithm but differ in **frontier management strategy**:
+
+**Core Algorithm**:
 ```
 1. Start at cell 0 with all walls present
-2. Mark current cell as visited
-3. Find all unvisited neighbors (via cells[current].neighbors)
-4. If unvisited neighbors exist:
-   a. Choose one randomly
-   b. Remove wall between current and chosen neighbor (bidirectional)
-   c. Push chosen neighbor onto stack
-5. If no unvisited neighbors, pop from stack (backtrack)
-6. Repeat until all cells visited
+2. Mark current cell as visited, add to frontier
+3. While frontier is not empty:
+   a. Pick cell from frontier (strategy differs by difficulty)
+   b. Find all unvisited neighbors
+   c. If unvisited neighbors exist:
+      - Choose one randomly
+      - Remove wall between current and chosen neighbor (bidirectional)
+      - Mark chosen as visited, add to frontier
+   d. If no unvisited neighbors, remove from frontier
+4. Repeat until all cells visited
 ```
+
+**Difficulty Strategies**:
+- **Easy**: Frontier = Stack (LIFO)
+  - Always picks the most recently added cell
+  - Creates long winding corridors with less branching
+  - Classic "recursive backtracking" feel
+
+- **Hard**: Frontier = Set (random selection)
+  - Picks a random cell from all active frontiers
+  - Creates more uniform complexity throughout
+  - Higher branching factor and more dead ends
+  - More challenging to solve
 
 **Properties**:
 - Creates a **perfect maze** (exactly one path between any two cells)
 - No loops or isolated sections
 - Always solvable
 - Random selection creates varied mazes each run
+- Same code, different data structures (strategy pattern)
 
 ### Maze Solving: Breadth-First Search
 

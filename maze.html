@@ -64,7 +64,7 @@
             font-size: 0.9em;
         }
 
-        input[type="number"] {
+        input[type="number"], select {
             padding: 10px;
             border: 2px solid #ddd;
             border-radius: 6px;
@@ -72,7 +72,7 @@
             transition: border-color 0.2s;
         }
 
-        input[type="number"]:focus {
+        input[type="number"]:focus, select:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -217,7 +217,6 @@
             margin: 5px 0;
         }
 
-        /* Marching ants animation for solution path */
         @keyframes marchingAnts {
             0% {
                 stroke-dashoffset: 20;
@@ -236,9 +235,18 @@
 <body>
     <div class="container">
         <h1>🎯 Interactive Maze Generator & Solver</h1>
-        <p class="subtitle">Generate perfect mazes and solve them interactively in your browser</p>
+        <p class="subtitle">Generate perfect mazes on rectangular, triangular, hexagonal, or octagonal grids!</p>
 
         <div class="controls">
+            <div class="control-group">
+                <label for="gridType">Grid Type:</label>
+                <select id="gridType">
+                    <option value="rectangular">Rectangular</option>
+                    <option value="triangular">Triangular</option>
+                    <option value="hexagonal">Hexagonal</option>
+                    <option value="octagonal">Octagonal</option>
+                </select>
+            </div>
             <div class="control-group">
                 <label for="width">Width (cells):</label>
                 <input type="number" id="width" min="5" max="100" value="20">
@@ -249,7 +257,14 @@
             </div>
             <div class="control-group">
                 <label for="cellSize">Cell Size (px):</label>
-                <input type="number" id="cellSize" min="10" max="50" value="20">
+                <input type="number" id="cellSize" min="10" max="50" value="30">
+            </div>
+            <div class="control-group">
+                <label for="difficulty">Difficulty:</label>
+                <select id="difficulty">
+                    <option value="easy">Easy (long corridors)</option>
+                    <option value="hard">Hard (more branching)</option>
+                </select>
             </div>
         </div>
 
@@ -275,8 +290,9 @@
         <div class="instructions">
             <h3>📖 How to Use:</h3>
             <ul>
+                <li><strong>Grid Type:</strong> Choose between rectangular, triangular, hexagonal, or octagonal grids</li>
                 <li><strong>Generate New Maze:</strong> Creates a random perfect maze with the specified dimensions</li>
-                <li><strong>Play the Game:</strong> Click and drag through the maze from the entrance (top-left) to the exit (bottom-right). Your path is drawn in blue!</li>
+                <li><strong>Play the Game:</strong> Click and drag through the maze from entrance to exit. Your path is drawn in blue!</li>
                 <li><strong>Reset Game:</strong> Clear your current path and try again</li>
                 <li><strong>Show Solution:</strong> Displays the shortest path in red (ends the game)</li>
                 <li><strong>Hide Solution:</strong> Removes the solution path from display</li>
@@ -287,142 +303,144 @@
     </div>
 
     <script>
-        // Direction enum
-        const Direction = {
-            NORTH: 0,
-            SOUTH: 1,
-            EAST: 2,
-            WEST: 3
-        };
+        // Helper: convert (x, y) to cell index
+        function cellIndex(x, y, width) {
+            return y * width + x;
+        }
 
-        // Cell class
-        class Cell {
-            constructor() {
-                this.walls = [true, true, true, true]; // N, S, E, W
-            }
+        // Helper: convert cell index to (x, y)
+        function cellCoords(idx, width) {
+            return [idx % width, Math.floor(idx / width)];
+        }
 
-            removeWall(direction) {
-                this.walls[direction] = false;
-            }
-
-            hasWall(direction) {
-                return this.walls[direction];
+        // MazeCell: holds neighbors and walls
+        class MazeCell {
+            constructor(numNeighbors) {
+                this.neighbors = new Array(numNeighbors).fill(null);
+                this.walls = new Array(numNeighbors).fill(true);
             }
         }
 
-        // Maze class
-        class Maze {
-            constructor(width, height) {
+        // Generic Maze class - works with any shape
+        class GenericMaze {
+            constructor(width, height, shape) {
                 this.width = width;
                 this.height = height;
+                this.shape = shape;
                 this.cells = [];
 
-                // Initialize cells
-                for (let y = 0; y < height; y++) {
-                    this.cells[y] = [];
-                    for (let x = 0; x < width; x++) {
-                        this.cells[y][x] = new Cell();
-                    }
+                const numCells = width * height;
+                const numNeighbors = shape.numNeighbors();
+
+                for (let i = 0; i < numCells; i++) {
+                    this.cells.push(new MazeCell(numNeighbors));
                 }
+
+                shape.initNeighbors(width, height, this.cells);
             }
 
-            generate() {
-                const visited = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
-                const stack = [];
+            generate(isHard = false) {
+                const visited = new Array(this.cells.length).fill(false);
 
-                // Start at (0, 0)
-                stack.push([0, 0]);
-                visited[0][0] = true;
+                // Strategy pattern: different frontier management for easy vs hard
+                // Easy: Stack (LIFO) creates long corridors
+                // Hard: Set (random selection) creates more branching
+                const frontier = isHard ? new Set() : [];
 
-                while (stack.length > 0) {
-                    const [y, x] = stack[stack.length - 1];
-                    const unvisitedNeighbors = [];
+                // Add starting cell
+                if (isHard) {
+                    frontier.add(0);
+                } else {
+                    frontier.push(0);
+                }
+                visited[0] = true;
 
-                    // Check all neighbors
-                    const directions = [
-                        [Direction.NORTH, y - 1, x],
-                        [Direction.SOUTH, y + 1, x],
-                        [Direction.EAST, y, x + 1],
-                        [Direction.WEST, y, x - 1]
-                    ];
+                // Main generation loop
+                while ((isHard && frontier.size > 0) || (!isHard && frontier.length > 0)) {
+                    // Pick next cell from frontier based on strategy
+                    let current;
+                    if (isHard) {
+                        const frontierArray = Array.from(frontier);
+                        current = frontierArray[Math.floor(Math.random() * frontierArray.length)];
+                    } else {
+                        current = frontier[frontier.length - 1];
+                    }
 
-                    for (const [dir, ny, nx] of directions) {
-                        if (ny >= 0 && ny < this.height && nx >= 0 && nx < this.width && !visited[ny][nx]) {
-                            unvisitedNeighbors.push([dir, ny, nx]);
+                    // Find unvisited neighbors
+                    const unvisited = [];
+                    for (let edgeIdx = 0; edgeIdx < this.cells[current].neighbors.length; edgeIdx++) {
+                        const neighbor = this.cells[current].neighbors[edgeIdx];
+                        if (neighbor !== null && !visited[neighbor]) {
+                            unvisited.push([neighbor, edgeIdx]);
                         }
                     }
 
-                    if (unvisitedNeighbors.length === 0) {
-                        stack.pop();
+                    if (unvisited.length === 0) {
+                        // No unvisited neighbors, remove from frontier
+                        if (isHard) {
+                            frontier.delete(current);
+                        } else {
+                            frontier.pop();
+                        }
                     } else {
-                        // Pick random unvisited neighbor
-                        const [direction, ny, nx] = unvisitedNeighbors[Math.floor(Math.random() * unvisitedNeighbors.length)];
+                        // Pick a random unvisited neighbor
+                        const [next, edgeIdx] = unvisited[Math.floor(Math.random() * unvisited.length)];
 
-                        // Remove walls
-                        this.cells[y][x].removeWall(direction);
-                        this.cells[ny][nx].removeWall(this.oppositeDirection(direction));
+                        // Carve passage between current and next
+                        this.cells[current].walls[edgeIdx] = false;
 
-                        visited[ny][nx] = true;
-                        stack.push([ny, nx]);
+                        // Find and remove reverse edge
+                        for (let revIdx = 0; revIdx < this.cells[next].neighbors.length; revIdx++) {
+                            if (this.cells[next].neighbors[revIdx] === current) {
+                                this.cells[next].walls[revIdx] = false;
+                                break;
+                            }
+                        }
+
+                        // Mark as visited and add to frontier
+                        visited[next] = true;
+                        if (isHard) {
+                            frontier.add(next);
+                        } else {
+                            frontier.push(next);
+                        }
                     }
-                }
-            }
-
-            oppositeDirection(dir) {
-                switch(dir) {
-                    case Direction.NORTH: return Direction.SOUTH;
-                    case Direction.SOUTH: return Direction.NORTH;
-                    case Direction.EAST: return Direction.WEST;
-                    case Direction.WEST: return Direction.EAST;
                 }
             }
 
             solve() {
-                // BFS to find shortest path
-                const queue = [[0, 0]];
-                const visited = Array(this.height).fill(null).map(() => Array(this.width).fill(false));
+                const queue = [0];
+                const visited = new Array(this.cells.length).fill(false);
                 const parent = new Map();
 
-                visited[0][0] = true;
-                const endY = this.height - 1;
-                const endX = this.width - 1;
+                visited[0] = true;
+                const end = this.cells.length - 1;
 
                 while (queue.length > 0) {
-                    const [y, x] = queue.shift();
+                    const current = queue.shift();
 
-                    if (y === endY && x === endX) {
+                    if (current === end) {
                         break;
                     }
 
-                    // Check all directions
-                    const directions = [
-                        [Direction.NORTH, y - 1, x],
-                        [Direction.SOUTH, y + 1, x],
-                        [Direction.EAST, y, x + 1],
-                        [Direction.WEST, y, x - 1]
-                    ];
-
-                    for (const [dir, ny, nx] of directions) {
-                        if (!this.cells[y][x].hasWall(dir) &&
-                            ny >= 0 && ny < this.height &&
-                            nx >= 0 && nx < this.width &&
-                            !visited[ny][nx]) {
-                            visited[ny][nx] = true;
-                            parent.set(`${ny},${nx}`, [y, x]);
-                            queue.push([ny, nx]);
+                    for (let edgeIdx = 0; edgeIdx < this.cells[current].neighbors.length; edgeIdx++) {
+                        const neighbor = this.cells[current].neighbors[edgeIdx];
+                        if (neighbor !== null && !this.cells[current].walls[edgeIdx] && !visited[neighbor]) {
+                            visited[neighbor] = true;
+                            parent.set(neighbor, current);
+                            queue.push(neighbor);
                         }
                     }
                 }
 
                 // Reconstruct path
                 const path = [];
-                let current = [endY, endX];
+                let current = end;
                 path.push(current);
 
-                while (current[0] !== 0 || current[1] !== 0) {
-                    const key = `${current[0]},${current[1]}`;
-                    if (!parent.has(key)) break;
-                    current = parent.get(key);
+                while (current !== 0) {
+                    if (!parent.has(current)) break;
+                    current = parent.get(current);
                     path.push(current);
                 }
 
@@ -431,46 +449,670 @@
             }
 
             toSVG(cellSize, solutionPath = null) {
+                return this.shape.toSVG(this, cellSize, solutionPath);
+            }
+
+            getCellCenter(idx, cellSize) {
+                return this.shape.getCellCenter(this, idx, cellSize);
+            }
+
+            getCellFromPoint(x, y, cellSize, svg) {
+                return this.shape.getCellFromPoint(this, x, y, cellSize, svg);
+            }
+        }
+
+        // Rectangular Shape
+        class RectShape {
+            numNeighbors() {
+                return 4;
+            }
+
+            initNeighbors(width, height, cells) {
+                // Neighbor indices: 0=N, 1=S, 2=E, 3=W
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = cellIndex(x, y, width);
+
+                        if (y > 0) cells[idx].neighbors[0] = cellIndex(x, y - 1, width); // North
+                        if (y < height - 1) cells[idx].neighbors[1] = cellIndex(x, y + 1, width); // South
+                        if (x < width - 1) cells[idx].neighbors[2] = cellIndex(x + 1, y, width); // East
+                        if (x > 0) cells[idx].neighbors[3] = cellIndex(x - 1, y, width); // West
+                    }
+                }
+            }
+
+            toSVG(maze, cellSize, solutionPath = null) {
                 const wallThickness = 2;
                 const totalCellSize = cellSize + wallThickness;
-                const svgWidth = this.width * totalCellSize + wallThickness;
-                const svgHeight = this.height * totalCellSize + wallThickness;
+                const svgWidth = maze.width * totalCellSize + wallThickness;
+                const svgHeight = maze.height * totalCellSize + wallThickness;
 
                 let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">`;
                 svg += `<rect width="${svgWidth}" height="${svgHeight}" fill="white"/>`;
                 svg += `<g stroke="black" stroke-width="${wallThickness}" stroke-linecap="square">`;
 
-                // Draw walls
-                for (let y = 0; y < this.height; y++) {
-                    for (let x = 0; x < this.width; x++) {
+                for (let y = 0; y < maze.height; y++) {
+                    for (let x = 0; x < maze.width; x++) {
+                        const idx = cellIndex(x, y, maze.width);
                         const cellX = x * totalCellSize + wallThickness;
                         const cellY = y * totalCellSize + wallThickness;
 
-                        // North wall (skip if entrance at top-left)
-                        if (this.cells[y][x].hasWall(Direction.NORTH)) {
-                            if (!(y === 0 && x === 0)) {
-                                svg += `<line x1="${cellX}" y1="${cellY}" x2="${cellX + totalCellSize}" y2="${cellY}"/>`;
+                        // North wall (skip if entrance)
+                        if (maze.cells[idx].walls[0] && idx !== 0) {
+                            svg += `<line x1="${cellX}" y1="${cellY}" x2="${cellX + totalCellSize}" y2="${cellY}"/>`;
+                        }
+
+                        // South wall (skip if exit)
+                        if (maze.cells[idx].walls[1] && idx !== maze.cells.length - 1) {
+                            svg += `<line x1="${cellX}" y1="${cellY + totalCellSize}" x2="${cellX + totalCellSize}" y2="${cellY + totalCellSize}"/>`;
+                        }
+
+                        // East wall
+                        if (maze.cells[idx].walls[2]) {
+                            svg += `<line x1="${cellX + totalCellSize}" y1="${cellY}" x2="${cellX + totalCellSize}" y2="${cellY + totalCellSize}"/>`;
+                        }
+
+                        // West wall (skip if entrance)
+                        if (maze.cells[idx].walls[3] && idx !== 0) {
+                            svg += `<line x1="${cellX}" y1="${cellY}" x2="${cellX}" y2="${cellY + totalCellSize}"/>`;
+                        }
+                    }
+                }
+
+                svg += `</g>`;
+
+                if (solutionPath && solutionPath.length > 0) {
+                    svg += `<g stroke="red" stroke-width="3" stroke-linecap="round" fill="none">`;
+                    svg += `<path class="solution-path" d="`;
+
+                    for (let i = 0; i < solutionPath.length; i++) {
+                        const [cx, cy] = this.getCellCenter(maze, solutionPath[i], cellSize);
+                        svg += i === 0 ? `M ${cx} ${cy} ` : `L ${cx} ${cy} `;
+                    }
+
+                    svg += `"/>`;
+                    svg += `</g>`;
+                }
+
+                svg += `</svg>`;
+                return svg;
+            }
+
+            getCellCenter(maze, idx, cellSize) {
+                const wallThickness = 2;
+                const totalCellSize = cellSize + wallThickness;
+                const [x, y] = cellCoords(idx, maze.width);
+                return [
+                    x * totalCellSize + wallThickness + totalCellSize / 2,
+                    y * totalCellSize + wallThickness + totalCellSize / 2
+                ];
+            }
+
+            getCellFromPoint(maze, px, py, cellSize, svg) {
+                const wallThickness = 2;
+                const totalCellSize = cellSize + wallThickness;
+                const rect = svg.getBoundingClientRect();
+                const svgX = px - rect.left;
+                const svgY = py - rect.top;
+
+                const x = Math.floor((svgX - wallThickness) / totalCellSize);
+                const y = Math.floor((svgY - wallThickness) / totalCellSize);
+
+                if (x >= 0 && x < maze.width && y >= 0 && y < maze.height) {
+                    return cellIndex(x, y, maze.width);
+                }
+                return null;
+            }
+        }
+
+        // Triangular Shape
+        class TriShape {
+            numNeighbors() {
+                return 3;
+            }
+
+            initNeighbors(width, height, cells) {
+                // Neighbor indices: 0=left, 1=right, 2=top/bottom
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = cellIndex(x, y, width);
+                        const isUp = (x + y) % 2 === 0;
+
+                        if (x > 0) cells[idx].neighbors[0] = cellIndex(x - 1, y, width); // Left
+                        if (x < width - 1) cells[idx].neighbors[1] = cellIndex(x + 1, y, width); // Right
+
+                        if (isUp) {
+                            if (y < height - 1) cells[idx].neighbors[2] = cellIndex(x, y + 1, width); // Bottom
+                        } else {
+                            if (y > 0) cells[idx].neighbors[2] = cellIndex(x, y - 1, width); // Top
+                        }
+                    }
+                }
+            }
+
+            toSVG(maze, cellSize, solutionPath = null) {
+                const triHeight = Math.round(cellSize * 0.866);
+                const svgWidth = maze.width * cellSize / 2 + cellSize / 2;
+                const svgHeight = maze.height * triHeight + triHeight;
+                const wallThickness = 2;
+
+                let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">`;
+                svg += `<rect width="${svgWidth}" height="${svgHeight}" fill="white"/>`;
+                svg += `<g stroke="black" stroke-width="${wallThickness}" stroke-linecap="square" fill="none">`;
+
+                for (let y = 0; y < maze.height; y++) {
+                    for (let x = 0; x < maze.width; x++) {
+                        const idx = cellIndex(x, y, maze.width);
+                        const isUp = (x + y) % 2 === 0;
+                        const baseX = x * cellSize / 2;
+                        const baseY = y * triHeight;
+
+                        if (isUp) {
+                            const topX = baseX + cellSize / 2;
+                            const topY = baseY;
+                            const leftX = baseX;
+                            const leftY = baseY + triHeight;
+                            const rightX = baseX + cellSize;
+                            const rightY = baseY + triHeight;
+
+                            // Left wall (skip if entrance at cell 0)
+                            if (maze.cells[idx].walls[0] && idx !== 0) {
+                                svg += `<line x1="${topX}" y1="${topY}" x2="${leftX}" y2="${leftY}"/>`;
+                            }
+                            // Right wall
+                            if (maze.cells[idx].walls[1]) {
+                                svg += `<line x1="${topX}" y1="${topY}" x2="${rightX}" y2="${rightY}"/>`;
+                            }
+                            // Bottom wall (skip if exit at last cell)
+                            if (maze.cells[idx].walls[2] && idx !== maze.cells.length - 1) {
+                                svg += `<line x1="${leftX}" y1="${leftY}" x2="${rightX}" y2="${rightY}"/>`;
+                            }
+                        } else {
+                            const bottomX = baseX + cellSize / 2;
+                            const bottomY = baseY + triHeight;
+                            const leftX = baseX;
+                            const leftY = baseY;
+                            const rightX = baseX + cellSize;
+                            const rightY = baseY;
+
+                            // Left wall (skip if entrance at cell 0)
+                            if (maze.cells[idx].walls[0] && idx !== 0) {
+                                svg += `<line x1="${bottomX}" y1="${bottomY}" x2="${leftX}" y2="${leftY}"/>`;
+                            }
+                            // Right wall
+                            if (maze.cells[idx].walls[1]) {
+                                svg += `<line x1="${bottomX}" y1="${bottomY}" x2="${rightX}" y2="${rightY}"/>`;
+                            }
+                            // Top wall (skip if exit at last cell)
+                            if (maze.cells[idx].walls[2] && idx !== maze.cells.length - 1) {
+                                svg += `<line x1="${leftX}" y1="${leftY}" x2="${rightX}" y2="${rightY}"/>`;
+                            }
+                        }
+                    }
+                }
+
+                svg += `</g>`;
+
+                if (solutionPath && solutionPath.length > 0) {
+                    svg += `<g stroke="red" stroke-width="3" stroke-linecap="round" fill="none">`;
+                    svg += `<path class="solution-path" d="`;
+
+                    for (let i = 0; i < solutionPath.length; i++) {
+                        const idx = solutionPath[i];
+                        const [x, y] = cellCoords(idx, maze.width);
+                        const isUp = (x + y) % 2 === 0;
+                        const baseX = x * cellSize / 2;
+                        const baseY = y * triHeight;
+
+                        let px, py;
+
+                        if (i === 0) {
+                            // First cell - start at center
+                            px = baseX + cellSize / 2;
+                            py = baseY + triHeight / 2;
+                        } else {
+                            // Determine which edge we came through by finding which neighbor of current cell is the previous cell
+                            const prevIdx = solutionPath[i - 1];
+                            const neighborDir = maze.cells[idx].neighbors.indexOf(prevIdx);
+
+                            if (isUp) {
+                                // Up-pointing triangle: vertices are (baseX + cellSize/2, baseY), (baseX, baseY + triHeight), (baseX + cellSize, baseY + triHeight)
+                                const topX = baseX + cellSize / 2;
+                                const topY = baseY;
+                                const leftX = baseX;
+                                const leftY = baseY + triHeight;
+                                const rightX = baseX + cellSize;
+                                const rightY = baseY + triHeight;
+
+                                if (neighborDir === 0) {
+                                    // Came from left - midpoint of top-left edge
+                                    px = (topX + leftX) / 2;
+                                    py = (topY + leftY) / 2;
+                                } else if (neighborDir === 1) {
+                                    // Came from right - midpoint of top-right edge
+                                    px = (topX + rightX) / 2;
+                                    py = (topY + rightY) / 2;
+                                } else {
+                                    // Came from bottom - midpoint of bottom edge
+                                    px = (leftX + rightX) / 2;
+                                    py = (leftY + rightY) / 2;
+                                }
+                            } else {
+                                // Down-pointing triangle: vertices are (baseX + cellSize/2, baseY + triHeight), (baseX, baseY), (baseX + cellSize, baseY)
+                                const bottomX = baseX + cellSize / 2;
+                                const bottomY = baseY + triHeight;
+                                const leftX = baseX;
+                                const leftY = baseY;
+                                const rightX = baseX + cellSize;
+                                const rightY = baseY;
+
+                                if (neighborDir === 0) {
+                                    // Came from left - midpoint of bottom-left edge
+                                    px = (bottomX + leftX) / 2;
+                                    py = (bottomY + leftY) / 2;
+                                } else if (neighborDir === 1) {
+                                    // Came from right - midpoint of bottom-right edge
+                                    px = (bottomX + rightX) / 2;
+                                    py = (bottomY + rightY) / 2;
+                                } else {
+                                    // Came from top - midpoint of top edge
+                                    px = (leftX + rightX) / 2;
+                                    py = (leftY + rightY) / 2;
+                                }
                             }
                         }
 
-                        // South wall (skip if exit at bottom-right)
-                        if (this.cells[y][x].hasWall(Direction.SOUTH)) {
-                            if (!(y === this.height - 1 && x === this.width - 1)) {
-                                svg += `<line x1="${cellX}" y1="${cellY + totalCellSize}" x2="${cellX + totalCellSize}" y2="${cellY + totalCellSize}"/>`;
+                        svg += i === 0 ? `M ${px} ${py} ` : `L ${px} ${py} `;
+                    }
+
+                    svg += `"/>`;
+                    svg += `</g>`;
+                }
+
+                svg += `</svg>`;
+                return svg;
+            }
+
+            getCellCenter(maze, idx, cellSize) {
+                const triHeight = Math.round(cellSize * 0.866);
+                const [x, y] = cellCoords(idx, maze.width);
+                const isUp = (x + y) % 2 === 0;
+                const baseX = x * cellSize / 2;
+                const baseY = y * triHeight;
+
+                if (isUp) {
+                    return [baseX + cellSize / 2, baseY + triHeight / 2];
+                } else {
+                    return [baseX + cellSize / 2, baseY + triHeight / 2];
+                }
+            }
+
+            getCellFromPoint(maze, px, py, cellSize, svg) {
+                const triHeight = Math.round(cellSize * 0.866);
+
+                // Use SVG's built-in coordinate transformation
+                const pt = svg.createSVGPoint();
+                pt.x = px;
+                pt.y = py;
+                const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+                const col = Math.floor(svgP.x / (cellSize / 2));
+                const row = Math.floor(svgP.y / triHeight);
+
+                if (col >= 0 && col < maze.width && row >= 0 && row < maze.height) {
+                    return cellIndex(col, row, maze.width);
+                }
+                return null;
+            }
+        }
+
+        // Hexagonal Shape
+        class HexShape {
+            numNeighbors() {
+                return 6;
+            }
+
+            initNeighbors(width, height, cells) {
+                // Neighbor indices: 0=N, 1=S, 2=NE, 3=SE, 4=NW, 5=SW
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = cellIndex(x, y, width);
+                        const isOddCol = x % 2 === 1;
+
+                        // N
+                        if (y > 0) cells[idx].neighbors[0] = cellIndex(x, y - 1, width);
+                        // S
+                        if (y < height - 1) cells[idx].neighbors[1] = cellIndex(x, y + 1, width);
+
+                        if (isOddCol) {
+                            // NE
+                            if (x < width - 1) cells[idx].neighbors[2] = cellIndex(x + 1, y, width);
+                            // SE
+                            if (y < height - 1 && x < width - 1) cells[idx].neighbors[3] = cellIndex(x + 1, y + 1, width);
+                            // NW
+                            if (x > 0) cells[idx].neighbors[4] = cellIndex(x - 1, y, width);
+                            // SW
+                            if (y < height - 1 && x > 0) cells[idx].neighbors[5] = cellIndex(x - 1, y + 1, width);
+                        } else {
+                            // NE
+                            if (y > 0 && x < width - 1) cells[idx].neighbors[2] = cellIndex(x + 1, y - 1, width);
+                            // SE
+                            if (x < width - 1) cells[idx].neighbors[3] = cellIndex(x + 1, y, width);
+                            // NW
+                            if (y > 0 && x > 0) cells[idx].neighbors[4] = cellIndex(x - 1, y - 1, width);
+                            // SW
+                            if (x > 0) cells[idx].neighbors[5] = cellIndex(x - 1, y, width);
+                        }
+                    }
+                }
+            }
+
+            toSVG(maze, cellSize, solutionPath = null) {
+                const hexWidth = cellSize;
+                const hexHeight = Math.round(cellSize * 0.866);
+                const svgWidth = maze.width * hexWidth * 3 / 4 + hexWidth / 4 + 10;
+                const svgHeight = maze.height * hexHeight + hexHeight / 2 + 10;
+                const wallThickness = 2;
+
+                let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">`;
+                svg += `<rect width="${svgWidth}" height="${svgHeight}" fill="white"/>`;
+                svg += `<g stroke="black" stroke-width="${wallThickness}" stroke-linecap="square" fill="none">`;
+
+                for (let y = 0; y < maze.height; y++) {
+                    for (let x = 0; x < maze.width; x++) {
+                        const idx = cellIndex(x, y, maze.width);
+                        const isOddCol = x % 2 === 1;
+                        const centerX = x * hexWidth * 3 / 4 + hexWidth / 2;
+                        const centerY = y * hexHeight + (isOddCol ? hexHeight : hexHeight / 2);
+
+                        const points = [
+                            [centerX - hexWidth / 4, centerY - hexHeight / 2],  // NW
+                            [centerX + hexWidth / 4, centerY - hexHeight / 2],  // NE
+                            [centerX + hexWidth / 2, centerY],                  // E
+                            [centerX + hexWidth / 4, centerY + hexHeight / 2],  // SE
+                            [centerX - hexWidth / 4, centerY + hexHeight / 2],  // SW
+                            [centerX - hexWidth / 2, centerY]                   // W
+                        ];
+
+                        // N wall (skip if entrance at cell 0)
+                        if (maze.cells[idx].walls[0] && idx !== 0) {
+                            svg += `<line x1="${points[0][0]}" y1="${points[0][1]}" x2="${points[1][0]}" y2="${points[1][1]}"/>`;
+                        }
+                        // S wall (skip if exit at last cell)
+                        if (maze.cells[idx].walls[1] && idx !== maze.cells.length - 1) {
+                            svg += `<line x1="${points[4][0]}" y1="${points[4][1]}" x2="${points[3][0]}" y2="${points[3][1]}"/>`;
+                        }
+                        // NE wall
+                        if (maze.cells[idx].walls[2]) {
+                            svg += `<line x1="${points[1][0]}" y1="${points[1][1]}" x2="${points[2][0]}" y2="${points[2][1]}"/>`;
+                        }
+                        // SE wall
+                        if (maze.cells[idx].walls[3]) {
+                            svg += `<line x1="${points[2][0]}" y1="${points[2][1]}" x2="${points[3][0]}" y2="${points[3][1]}"/>`;
+                        }
+                        // NW wall (skip if entrance at cell 0)
+                        if (maze.cells[idx].walls[4] && idx !== 0) {
+                            svg += `<line x1="${points[5][0]}" y1="${points[5][1]}" x2="${points[0][0]}" y2="${points[0][1]}"/>`;
+                        }
+                        // SW wall (skip if exit at last cell)
+                        if (maze.cells[idx].walls[5] && idx !== maze.cells.length - 1) {
+                            svg += `<line x1="${points[4][0]}" y1="${points[4][1]}" x2="${points[5][0]}" y2="${points[5][1]}"/>`;
+                        }
+                    }
+                }
+
+                svg += `</g>`;
+
+                if (solutionPath && solutionPath.length > 0) {
+                    svg += `<g stroke="red" stroke-width="3" stroke-linecap="round" fill="none">`;
+                    svg += `<path class="solution-path" d="`;
+
+                    for (let i = 0; i < solutionPath.length; i++) {
+                        const [cx, cy] = this.getCellCenter(maze, solutionPath[i], cellSize);
+                        svg += i === 0 ? `M ${cx} ${cy} ` : `L ${cx} ${cy} `;
+                    }
+
+                    svg += `"/>`;
+                    svg += `</g>`;
+                }
+
+                svg += `</svg>`;
+                return svg;
+            }
+
+            getCellCenter(maze, idx, cellSize) {
+                const hexWidth = cellSize;
+                const hexHeight = Math.round(cellSize * 0.866);
+                const [x, y] = cellCoords(idx, maze.width);
+                const isOddCol = x % 2 === 1;
+                const centerX = x * hexWidth * 3 / 4 + hexWidth / 2;
+                const centerY = y * hexHeight + (isOddCol ? hexHeight : hexHeight / 2);
+                return [centerX, centerY];
+            }
+
+            getCellFromPoint(maze, px, py, cellSize, svg) {
+                const hexWidth = cellSize;
+                const hexHeight = Math.round(cellSize * 0.866);
+
+                // Use SVG's built-in coordinate transformation
+                const pt = svg.createSVGPoint();
+                pt.x = px;
+                pt.y = py;
+                const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+                // Find the nearest hexagon by checking a few candidates
+                let bestCell = null;
+                let bestDist = Infinity;
+
+                // Start with approximate grid position
+                const approxCol = Math.floor(svgP.x / (hexWidth * 3 / 4));
+                const approxRow = Math.floor(svgP.y / hexHeight);
+
+                // Check surrounding cells
+                for (let dc = -1; dc <= 1; dc++) {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        const col = approxCol + dc;
+                        const row = approxRow + dr;
+
+                        if (col >= 0 && col < maze.width && row >= 0 && row < maze.height) {
+                            const isOddCol = col % 2 === 1;
+                            const centerX = col * hexWidth * 3 / 4 + hexWidth / 2;
+                            const centerY = row * hexHeight + (isOddCol ? hexHeight : hexHeight / 2);
+
+                            const dist = Math.sqrt((svgP.x - centerX) ** 2 + (svgP.y - centerY) ** 2);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestCell = cellIndex(col, row, maze.width);
                             }
                         }
+                    }
+                }
 
-                        // West wall (skip if entrance at top-left)
-                        if (this.cells[y][x].hasWall(Direction.WEST)) {
-                            if (!(y === 0 && x === 0)) {
-                                svg += `<line x1="${cellX}" y1="${cellY}" x2="${cellX}" y2="${cellY + totalCellSize}"/>`;
-                            }
+                return bestCell;
+            }
+        }
+
+        // Octagonal + Square Shape (Truncated Square Tiling)
+        class OctShape {
+            numNeighbors() {
+                return 8; // Maximum neighbors (octagons have 8, squares have 4)
+            }
+
+            isOctagon(x, y) {
+                return (x + y) % 2 === 0;
+            }
+
+            initNeighbors(width, height, cells) {
+                // Neighbor indices for octagons: 0=N, 1=S, 2=E, 3=W, 4=NE, 5=SE, 6=NW, 7=SW
+                // Neighbor indices for squares: 0=N, 1=S, 2=E, 3=W
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = cellIndex(x, y, width);
+
+                        if (this.isOctagon(x, y)) {
+                            // Octagon: connect to 4 adjacent squares and 4 diagonal octagons
+
+                            // N - square above
+                            if (y > 0) cells[idx].neighbors[0] = cellIndex(x, y - 1, width);
+
+                            // S - square below
+                            if (y < height - 1) cells[idx].neighbors[1] = cellIndex(x, y + 1, width);
+
+                            // E - square to the right
+                            if (x < width - 1) cells[idx].neighbors[2] = cellIndex(x + 1, y, width);
+
+                            // W - square to the left
+                            if (x > 0) cells[idx].neighbors[3] = cellIndex(x - 1, y, width);
+
+                            // NE - octagon diagonally up-right
+                            if (x < width - 1 && y > 0) cells[idx].neighbors[4] = cellIndex(x + 1, y - 1, width);
+
+                            // SE - octagon diagonally down-right
+                            if (x < width - 1 && y < height - 1) cells[idx].neighbors[5] = cellIndex(x + 1, y + 1, width);
+
+                            // NW - octagon diagonally up-left
+                            if (x > 0 && y > 0) cells[idx].neighbors[6] = cellIndex(x - 1, y - 1, width);
+
+                            // SW - octagon diagonally down-left
+                            if (x > 0 && y < height - 1) cells[idx].neighbors[7] = cellIndex(x - 1, y + 1, width);
+
+                        } else {
+                            // Square: connect to 4 surrounding octagons (N, S, E, W)
+
+                            // N - octagon above
+                            if (y > 0) cells[idx].neighbors[0] = cellIndex(x, y - 1, width);
+
+                            // S - octagon below
+                            if (y < height - 1) cells[idx].neighbors[1] = cellIndex(x, y + 1, width);
+
+                            // E - octagon to the right
+                            if (x < width - 1) cells[idx].neighbors[2] = cellIndex(x + 1, y, width);
+
+                            // W - octagon to the left
+                            if (x > 0) cells[idx].neighbors[3] = cellIndex(x - 1, y, width);
                         }
+                    }
+                }
+            }
 
-                        // East wall (skip if exit at bottom-right)
-                        if (this.cells[y][x].hasWall(Direction.EAST)) {
-                            if (!(y === this.height - 1 && x === this.width - 1)) {
-                                svg += `<line x1="${cellX + totalCellSize}" y1="${cellY}" x2="${cellX + totalCellSize}" y2="${cellY + totalCellSize}"/>`;
+            toSVG(maze, cellSize, solutionPath = null) {
+                // In truncated square tiling:
+                // - cellSize is the edge length (all edges are equal length)
+                // - Center-to-center spacing = edge_length/2 * (2 + sqrt(2))
+                const edgeLength = cellSize;
+                const spacing = edgeLength / 2 * (2 + Math.SQRT2);
+
+                // Margin needs to accommodate the octagon's farthest extent from its center
+                const margin = edgeLength / 2 * (1 + Math.SQRT2) + 10;
+
+                const svgWidth = Math.ceil(maze.width * spacing + 2 * margin);
+                const svgHeight = Math.ceil(maze.height * spacing + 2 * margin);
+
+                let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">`;
+                svg += `<rect width="${svgWidth}" height="${svgHeight}" fill="white"/>`;
+                svg += `<g stroke="black" stroke-width="2" stroke-linecap="square" fill="none">`;
+
+                const getCenter = (x, y) => {
+                    const cx = margin + x * spacing;
+                    const cy = margin + y * spacing;
+                    return [cx, cy];
+                };
+
+                // Draw all cells and walls
+                for (let y = 0; y < maze.height; y++) {
+                    for (let x = 0; x < maze.width; x++) {
+                        const idx = cellIndex(x, y, maze.width);
+                        const [cx, cy] = getCenter(x, y);
+
+                        if (this.isOctagon(x, y)) {
+                            // Draw octagon walls
+                            // For a regular octagon with edge length a:
+                            // - Distance from center to midpoint of N/S/E/W edge = a/2 * (1 + sqrt(2))
+                            const halfEdge = edgeLength / 2;
+                            const radius = halfEdge * (1 + Math.SQRT2);
+
+                            const points = [
+                                [cx - halfEdge, cy - radius],     // Top-left
+                                [cx + halfEdge, cy - radius],     // Top-right
+                                [cx + radius, cy - halfEdge],     // Right-top
+                                [cx + radius, cy + halfEdge],     // Right-bottom
+                                [cx + halfEdge, cy + radius],     // Bottom-right
+                                [cx - halfEdge, cy + radius],     // Bottom-left
+                                [cx - radius, cy + halfEdge],     // Left-bottom
+                                [cx - radius, cy - halfEdge],     // Left-top
+                            ];
+
+                            // N wall
+                            if (maze.cells[idx].walls[0]) {
+                                svg += `<line x1="${points[0][0]}" y1="${points[0][1]}" x2="${points[1][0]}" y2="${points[1][1]}"/>`;
+                            }
+
+                            // S wall
+                            if (maze.cells[idx].walls[1]) {
+                                svg += `<line x1="${points[4][0]}" y1="${points[4][1]}" x2="${points[5][0]}" y2="${points[5][1]}"/>`;
+                            }
+
+                            // E wall
+                            if (maze.cells[idx].walls[2]) {
+                                svg += `<line x1="${points[2][0]}" y1="${points[2][1]}" x2="${points[3][0]}" y2="${points[3][1]}"/>`;
+                            }
+
+                            // W wall
+                            if (maze.cells[idx].walls[3]) {
+                                svg += `<line x1="${points[6][0]}" y1="${points[6][1]}" x2="${points[7][0]}" y2="${points[7][1]}"/>`;
+                            }
+
+                            // NE diagonal wall
+                            if (maze.cells[idx].walls[4]) {
+                                svg += `<line x1="${points[1][0]}" y1="${points[1][1]}" x2="${points[2][0]}" y2="${points[2][1]}"/>`;
+                            }
+
+                            // SE diagonal wall (skip for last cell - exit)
+                            if (idx !== maze.cells.length - 1 && maze.cells[idx].walls[5]) {
+                                svg += `<line x1="${points[3][0]}" y1="${points[3][1]}" x2="${points[4][0]}" y2="${points[4][1]}"/>`;
+                            }
+
+                            // NW diagonal wall (skip for first cell - entry)
+                            if (idx !== 0 && maze.cells[idx].walls[6]) {
+                                svg += `<line x1="${points[7][0]}" y1="${points[7][1]}" x2="${points[0][0]}" y2="${points[0][1]}"/>`;
+                            }
+
+                            // SW diagonal wall
+                            if (maze.cells[idx].walls[7]) {
+                                svg += `<line x1="${points[5][0]}" y1="${points[5][1]}" x2="${points[6][0]}" y2="${points[6][1]}"/>`;
+                            }
+
+                        } else {
+                            // Draw square walls
+                            // Square has side length = edgeLength
+                            const halfEdge = edgeLength / 2;
+
+                            const points = [
+                                [cx - halfEdge, cy - halfEdge],  // Top-left
+                                [cx + halfEdge, cy - halfEdge],  // Top-right
+                                [cx + halfEdge, cy + halfEdge],  // Bottom-right
+                                [cx - halfEdge, cy + halfEdge],  // Bottom-left
+                            ];
+
+                            // N wall
+                            if (maze.cells[idx].walls[0]) {
+                                svg += `<line x1="${points[0][0]}" y1="${points[0][1]}" x2="${points[1][0]}" y2="${points[1][1]}"/>`;
+                            }
+
+                            // S wall
+                            if (maze.cells[idx].walls[1]) {
+                                svg += `<line x1="${points[2][0]}" y1="${points[2][1]}" x2="${points[3][0]}" y2="${points[3][1]}"/>`;
+                            }
+
+                            // E wall
+                            if (maze.cells[idx].walls[2]) {
+                                svg += `<line x1="${points[1][0]}" y1="${points[1][1]}" x2="${points[2][0]}" y2="${points[2][1]}"/>`;
+                            }
+
+                            // W wall
+                            if (maze.cells[idx].walls[3]) {
+                                svg += `<line x1="${points[0][0]}" y1="${points[0][1]}" x2="${points[3][0]}" y2="${points[3][1]}"/>`;
                             }
                         }
                     }
@@ -484,15 +1126,8 @@
                     svg += `<path class="solution-path" d="`;
 
                     for (let i = 0; i < solutionPath.length; i++) {
-                        const [y, x] = solutionPath[i];
-                        const centerX = x * totalCellSize + wallThickness + totalCellSize / 2;
-                        const centerY = y * totalCellSize + wallThickness + totalCellSize / 2;
-
-                        if (i === 0) {
-                            svg += `M ${centerX} ${centerY} `;
-                        } else {
-                            svg += `L ${centerX} ${centerY} `;
-                        }
+                        const [cx, cy] = this.getCellCenter(maze, solutionPath[i], cellSize);
+                        svg += i === 0 ? `M ${cx} ${cy} ` : `L ${cx} ${cy} `;
                     }
 
                     svg += `"/>`;
@@ -501,6 +1136,57 @@
 
                 svg += `</svg>`;
                 return svg;
+            }
+
+            getCellCenter(maze, idx, cellSize) {
+                const edgeLength = cellSize;
+                const spacing = edgeLength / 2 * (2 + Math.SQRT2);
+                const margin = edgeLength / 2 * (1 + Math.SQRT2) + 10;
+                const [x, y] = cellCoords(idx, maze.width);
+                const cx = margin + x * spacing;
+                const cy = margin + y * spacing;
+                return [cx, cy];
+            }
+
+            getCellFromPoint(maze, px, py, cellSize, svg) {
+                const edgeLength = cellSize;
+                const spacing = edgeLength / 2 * (2 + Math.SQRT2);
+                const margin = edgeLength / 2 * (1 + Math.SQRT2) + 10;
+
+                // Use SVG's built-in coordinate transformation
+                const pt = svg.createSVGPoint();
+                pt.x = px;
+                pt.y = py;
+                const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+                // Find the nearest cell by checking candidates
+                let bestCell = null;
+                let bestDist = Infinity;
+
+                // Approximate grid position
+                const approxCol = Math.floor((svgP.x - margin) / spacing);
+                const approxRow = Math.floor((svgP.y - margin) / spacing);
+
+                // Check surrounding cells
+                for (let dc = -1; dc <= 1; dc++) {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        const col = approxCol + dc;
+                        const row = approxRow + dr;
+
+                        if (col >= 0 && col < maze.width && row >= 0 && row < maze.height) {
+                            const centerX = margin + col * spacing;
+                            const centerY = margin + row * spacing;
+
+                            const dist = Math.sqrt((svgP.x - centerX) ** 2 + (svgP.y - centerY) ** 2);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestCell = cellIndex(col, row, maze.width);
+                            }
+                        }
+                    }
+                }
+
+                return bestCell;
             }
         }
 
@@ -513,19 +1199,31 @@
         let gameWon = false;
         let userPathElement = null;
 
-        // Generate new maze
+        function getShape(gridType) {
+            switch (gridType) {
+                case 'rectangular': return new RectShape();
+                case 'triangular': return new TriShape();
+                case 'hexagonal': return new HexShape();
+                case 'octagonal': return new OctShape();
+                default: return new RectShape();
+            }
+        }
+
         function generateNewMaze() {
+            const gridType = document.getElementById('gridType').value;
             const width = parseInt(document.getElementById('width').value);
             const height = parseInt(document.getElementById('height').value);
-            const cellSize = parseInt(document.getElementById('cellSize').value);
+            const difficulty = document.getElementById('difficulty').value;
 
             if (width < 5 || width > 100 || height < 5 || height > 100) {
                 alert('Width and height must be between 5 and 100');
                 return;
             }
 
-            currentMaze = new Maze(width, height);
-            currentMaze.generate();
+            const shape = getShape(gridType);
+            currentMaze = new GenericMaze(width, height, shape);
+            const isHard = difficulty === 'hard';
+            currentMaze.generate(isHard);
             currentSolution = currentMaze.solve();
             solutionVisible = false;
             userPath = [];
@@ -534,20 +1232,17 @@
             renderMaze();
             setupInteraction();
 
-            // Show info
             const info = document.getElementById('info');
             const infoText = document.getElementById('infoText');
-            infoText.textContent = `${width}×${height} maze created. Solution path length: ${currentSolution.length} cells.`;
+            infoText.textContent = `${width}×${height} ${gridType} maze created. Solution path length: ${currentSolution.length} cells.`;
             info.style.display = 'block';
 
-            // Show game status
             const gameStatus = document.getElementById('gameStatus');
             gameStatus.textContent = '🎮 Click and drag to solve the maze! Start at the top-left entrance.';
             gameStatus.className = 'game-status';
             gameStatus.style.display = 'block';
         }
 
-        // Render maze
         function renderMaze() {
             const cellSize = parseInt(document.getElementById('cellSize').value);
             const mazeDisplay = document.getElementById('mazeDisplay');
@@ -555,11 +1250,8 @@
             mazeDisplay.outerHTML = svgContent.replace('<svg', '<svg id="mazeDisplay"');
         }
 
-        // Reset game
         function resetGame() {
-            if (!currentMaze) {
-                return;
-            }
+            if (!currentMaze) return;
             userPath = [];
             gameWon = false;
             solutionVisible = false;
@@ -572,7 +1264,6 @@
             gameStatus.style.display = 'block';
         }
 
-        // Show solution
         function showSolution() {
             if (!currentMaze) {
                 alert('Please generate a maze first!');
@@ -588,11 +1279,8 @@
             gameStatus.style.display = 'block';
         }
 
-        // Hide solution
         function hideSolution() {
-            if (!currentMaze) {
-                return;
-            }
+            if (!currentMaze) return;
             solutionVisible = false;
             if (!gameWon) {
                 setupInteraction();
@@ -600,7 +1288,6 @@
             renderMaze();
         }
 
-        // Download maze
         function downloadMaze() {
             if (!currentMaze) {
                 alert('Please generate a maze first!');
@@ -611,7 +1298,6 @@
             downloadSVG(svgContent, 'maze.svg');
         }
 
-        // Download solution
         function downloadSolution() {
             if (!currentMaze) {
                 alert('Please generate a maze first!');
@@ -622,7 +1308,6 @@
             downloadSVG(svgContent, 'maze_solution.svg');
         }
 
-        // Helper to download SVG
         function downloadSVG(svgContent, filename) {
             const blob = new Blob([svgContent], { type: 'image/svg+xml' });
             const url = URL.createObjectURL(blob);
@@ -635,50 +1320,6 @@
             URL.revokeObjectURL(url);
         }
 
-        // Get cell coordinates from mouse position
-        function getCellFromPoint(x, y, svg) {
-            const cellSize = parseInt(document.getElementById('cellSize').value);
-            const wallThickness = 2;
-            const totalCellSize = cellSize + wallThickness;
-
-            const rect = svg.getBoundingClientRect();
-            const svgX = x - rect.left;
-            const svgY = y - rect.top;
-
-            const cellX = Math.floor((svgX - wallThickness) / totalCellSize);
-            const cellY = Math.floor((svgY - wallThickness) / totalCellSize);
-
-            if (cellX >= 0 && cellX < currentMaze.width && cellY >= 0 && cellY < currentMaze.height) {
-                return [cellY, cellX];
-            }
-            return null;
-        }
-
-        // Check if two cells are adjacent and connected (no wall between them)
-        function areCellsConnected(cell1, cell2) {
-            const [y1, x1] = cell1;
-            const [y2, x2] = cell2;
-
-            // Check if cells are adjacent
-            const dy = y2 - y1;
-            const dx = x2 - x1;
-
-            if (Math.abs(dy) + Math.abs(dx) !== 1) {
-                return false; // Not adjacent
-            }
-
-            // Determine direction
-            let direction;
-            if (dy === -1) direction = Direction.NORTH;
-            else if (dy === 1) direction = Direction.SOUTH;
-            else if (dx === 1) direction = Direction.EAST;
-            else if (dx === -1) direction = Direction.WEST;
-
-            // Check if there's a wall
-            return !currentMaze.cells[y1][x1].hasWall(direction);
-        }
-
-        // Update user path visualization
         function updateUserPath() {
             if (userPath.length === 0) {
                 if (userPathElement) {
@@ -689,17 +1330,12 @@
             }
 
             const cellSize = parseInt(document.getElementById('cellSize').value);
-            const wallThickness = 2;
-            const totalCellSize = cellSize + wallThickness;
-
             const svg = document.getElementById('mazeDisplay');
 
-            // Remove old path
             if (userPathElement) {
                 userPathElement.remove();
             }
 
-            // Create new path
             const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             g.setAttribute('stroke', 'blue');
             g.setAttribute('stroke-width', '3');
@@ -709,15 +1345,73 @@
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             let d = '';
 
-            for (let i = 0; i < userPath.length; i++) {
-                const [y, x] = userPath[i];
-                const centerX = x * totalCellSize + wallThickness + totalCellSize / 2;
-                const centerY = y * totalCellSize + wallThickness + totalCellSize / 2;
+            // Use shape-specific path rendering
+            const gridType = document.getElementById('gridType').value;
+            if (gridType === 'triangular') {
+                // Use edge-following logic for triangular mazes
+                const triHeight = Math.round(cellSize * 0.866);
+                for (let i = 0; i < userPath.length; i++) {
+                    const idx = userPath[i];
+                    const [x, y] = cellCoords(idx, currentMaze.width);
+                    const isUp = (x + y) % 2 === 0;
+                    const baseX = x * cellSize / 2;
+                    const baseY = y * triHeight;
 
-                if (i === 0) {
-                    d += `M ${centerX} ${centerY} `;
-                } else {
-                    d += `L ${centerX} ${centerY} `;
+                    let px, py;
+
+                    if (i === 0) {
+                        px = baseX + cellSize / 2;
+                        py = baseY + triHeight / 2;
+                    } else {
+                        const prevIdx = userPath[i - 1];
+                        const neighborDir = currentMaze.cells[idx].neighbors.indexOf(prevIdx);
+
+                        if (isUp) {
+                            const topX = baseX + cellSize / 2;
+                            const topY = baseY;
+                            const leftX = baseX;
+                            const leftY = baseY + triHeight;
+                            const rightX = baseX + cellSize;
+                            const rightY = baseY + triHeight;
+
+                            if (neighborDir === 0) {
+                                px = (topX + leftX) / 2;
+                                py = (topY + leftY) / 2;
+                            } else if (neighborDir === 1) {
+                                px = (topX + rightX) / 2;
+                                py = (topY + rightY) / 2;
+                            } else {
+                                px = (leftX + rightX) / 2;
+                                py = (leftY + rightY) / 2;
+                            }
+                        } else {
+                            const bottomX = baseX + cellSize / 2;
+                            const bottomY = baseY + triHeight;
+                            const leftX = baseX;
+                            const leftY = baseY;
+                            const rightX = baseX + cellSize;
+                            const rightY = baseY;
+
+                            if (neighborDir === 0) {
+                                px = (bottomX + leftX) / 2;
+                                py = (bottomY + leftY) / 2;
+                            } else if (neighborDir === 1) {
+                                px = (bottomX + rightX) / 2;
+                                py = (bottomY + rightY) / 2;
+                            } else {
+                                px = (leftX + rightX) / 2;
+                                py = (leftY + rightY) / 2;
+                            }
+                        }
+                    }
+
+                    d += i === 0 ? `M ${px} ${py} ` : `L ${px} ${py} `;
+                }
+            } else {
+                // Use center points for rectangular and hexagonal mazes
+                for (let i = 0; i < userPath.length; i++) {
+                    const [cx, cy] = currentMaze.getCellCenter(userPath[i], cellSize);
+                    d += i === 0 ? `M ${cx} ${cy} ` : `L ${cx} ${cy} `;
                 }
             }
 
@@ -727,14 +1421,11 @@
             userPathElement = g;
         }
 
-        // Check if user won
         function checkWin() {
             if (userPath.length === 0) return;
-
             const lastCell = userPath[userPath.length - 1];
-            const [y, x] = lastCell;
 
-            if (y === currentMaze.height - 1 && x === currentMaze.width - 1) {
+            if (lastCell === currentMaze.cells.length - 1) {
                 gameWon = true;
                 const gameStatus = document.getElementById('gameStatus');
                 gameStatus.textContent = `🎉 Congratulations! You solved the maze in ${userPath.length} moves! (Optimal: ${currentSolution.length})`;
@@ -743,49 +1434,48 @@
             }
         }
 
-        // Setup interactive drawing
+        function areCellsConnected(cell1, cell2) {
+            for (let i = 0; i < currentMaze.cells[cell1].neighbors.length; i++) {
+                if (currentMaze.cells[cell1].neighbors[i] === cell2 && !currentMaze.cells[cell1].walls[i]) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         function setupInteraction() {
             const svg = document.getElementById('mazeDisplay');
-
-            // Remove old listeners by replacing the element
             const newSvg = svg.cloneNode(true);
             svg.parentNode.replaceChild(newSvg, svg);
-
             const mazeDisplay = document.getElementById('mazeDisplay');
+            const cellSize = parseInt(document.getElementById('cellSize').value);
 
             function startDrawing(e) {
                 if (gameWon) return;
-
                 e.preventDefault();
                 const clientX = e.clientX || (e.touches && e.touches[0].clientX);
                 const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                const cell = currentMaze.getCellFromPoint(clientX, clientY, cellSize, mazeDisplay);
+                console.log('startDrawing: cell =', cell, 'userPath.length =', userPath.length);
 
-                const cell = getCellFromPoint(clientX, clientY, mazeDisplay);
-
-                if (cell) {
-                    const [y, x] = cell;
-
-                    // Check if starting at entrance (for new path)
-                    if (userPath.length === 0 && y === 0 && x === 0) {
+                if (cell !== null) {
+                    if (userPath.length === 0 && cell === 0) {
                         isDrawing = true;
                         userPath = [cell];
                         updateUserPath();
                         return;
                     }
 
-                    // Check if clicking on the last cell of existing path (to continue)
                     if (userPath.length > 0) {
                         const lastCell = userPath[userPath.length - 1];
-                        if (y === lastCell[0] && x === lastCell[1]) {
+                        if (cell === lastCell) {
                             isDrawing = true;
                             return;
                         }
 
-                        // Also allow clicking on any cell in the path to continue from there
                         for (let i = userPath.length - 1; i >= 0; i--) {
-                            if (userPath[i][0] === y && userPath[i][1] === x) {
+                            if (userPath[i] === cell) {
                                 isDrawing = true;
-                                // Truncate path to this point
                                 userPath = userPath.slice(0, i + 1);
                                 updateUserPath();
                                 return;
@@ -797,58 +1487,83 @@
 
             function continueDrawing(e) {
                 if (!isDrawing || gameWon) return;
-
                 e.preventDefault();
                 const clientX = e.clientX || (e.touches && e.touches[0].clientX);
                 const clientY = e.clientY || (e.touches && e.touches[0].clientY);
 
-                const cell = getCellFromPoint(clientX, clientY, mazeDisplay);
+                // Get SVG coordinates
+                const pt = mazeDisplay.createSVGPoint();
+                pt.x = clientX;
+                pt.y = clientY;
+                const svgP = pt.matrixTransform(mazeDisplay.getScreenCTM().inverse());
 
-                if (cell) {
-                    const lastCell = userPath[userPath.length - 1];
+                const lastCell = userPath[userPath.length - 1];
+                const [lastX, lastY] = currentMaze.getCellCenter(lastCell, cellSize);
+                const distToLast = Math.sqrt((svgP.x - lastX) ** 2 + (svgP.y - lastY) ** 2);
 
-                    // Check if it's the same cell
-                    if (cell[0] === lastCell[0] && cell[1] === lastCell[1]) {
+                // Check if we should backtrack (with hysteresis - smaller threshold)
+                if (userPath.length > 1) {
+                    const prevCell = userPath[userPath.length - 2];
+                    const [prevX, prevY] = currentMaze.getCellCenter(prevCell, cellSize);
+                    const distToPrev = Math.sqrt((svgP.x - prevX) ** 2 + (svgP.y - prevY) ** 2);
+
+                    // Only backtrack if we're much closer to previous cell than current cell
+                    if (distToPrev < cellSize * 0.5 && distToPrev < distToLast) {
+                        userPath.pop();
+                        updateUserPath();
                         return;
                     }
+                }
 
-                    // Check if we're backtracking
-                    if (userPath.length > 1) {
-                        const prevCell = userPath[userPath.length - 2];
-                        if (cell[0] === prevCell[0] && cell[1] === prevCell[1]) {
-                            // Backtrack - remove last cell
-                            userPath.pop();
-                            updateUserPath();
-                            return;
+                // Grid-specific thresholds
+                const gridType = document.getElementById('gridType').value;
+                const stayThreshold = gridType === 'hexagonal' ? cellSize * 0.4 : cellSize * 0.6;
+                const forwardThreshold = gridType === 'hexagonal' ? cellSize * 1.5 : cellSize * 1.2;
+
+                // Only look for next cell if we're far enough from current cell
+                if (distToLast < stayThreshold) {
+                    return; // Stay in current cell
+                }
+
+                // Find the closest connected neighbor
+                let bestNeighbor = null;
+                let bestDist = Infinity;
+                const threshold = forwardThreshold;
+
+                for (let i = 0; i < currentMaze.cells[lastCell].neighbors.length; i++) {
+                    const neighbor = currentMaze.cells[lastCell].neighbors[i];
+                    if (neighbor !== null && !currentMaze.cells[lastCell].walls[i]) {
+                        const [nx, ny] = currentMaze.getCellCenter(neighbor, cellSize);
+                        const dist = Math.sqrt((svgP.x - nx) ** 2 + (svgP.y - ny) ** 2);
+
+                        if (dist < threshold && dist < bestDist && neighbor !== lastCell) {
+                            bestDist = dist;
+                            bestNeighbor = neighbor;
                         }
                     }
+                }
 
-                    // Check if cells are connected
-                    if (areCellsConnected(lastCell, cell)) {
-                        userPath.push(cell);
-                        updateUserPath();
-                        checkWin();
-                    }
+                if (bestNeighbor !== null && !userPath.includes(bestNeighbor)) {
+                    console.log('continueDrawing: lastCell =', lastCell, 'neighbor =', bestNeighbor, 'dist =', bestDist);
+                    userPath.push(bestNeighbor);
+                    updateUserPath();
+                    checkWin();
                 }
             }
 
-            function stopDrawing(e) {
+            function stopDrawing() {
                 isDrawing = false;
             }
 
-            // Mouse events
             mazeDisplay.addEventListener('mousedown', startDrawing);
             mazeDisplay.addEventListener('mousemove', continueDrawing);
             mazeDisplay.addEventListener('mouseup', stopDrawing);
             mazeDisplay.addEventListener('mouseleave', stopDrawing);
-
-            // Touch events
             mazeDisplay.addEventListener('touchstart', startDrawing);
             mazeDisplay.addEventListener('touchmove', continueDrawing);
             mazeDisplay.addEventListener('touchend', stopDrawing);
         }
 
-        // Generate initial maze on load
         window.addEventListener('load', () => {
             generateNewMaze();
         });

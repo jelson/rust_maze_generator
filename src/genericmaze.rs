@@ -99,18 +99,50 @@ impl<S: Shape> GenericMaze<S> {
         cell_coords(idx, self.width)
     }
 
-    /// Generate the maze using recursive backtracking
-    pub fn generate(&mut self) {
+    /// Generate the maze (easy = long corridors, hard = more branching)
+    pub fn generate(&mut self, is_hard: bool) {
+        use std::collections::HashSet;
         let mut rng = rand::thread_rng();
         let mut visited = vec![false; self.cells.len()];
-        let mut stack = Vec::new();
 
-        stack.push(0);
+        // Strategy pattern: different frontier management for easy vs hard
+        enum Frontier {
+            Stack(Vec<usize>),           // Easy: LIFO (last-in-first-out) creates long corridors
+            Set(HashSet<usize>),         // Hard: random selection creates more branching
+        }
+
+        let mut frontier = if is_hard {
+            Frontier::Set(HashSet::new())
+        } else {
+            Frontier::Stack(Vec::new())
+        };
+
+        // Add starting cell to frontier
+        match &mut frontier {
+            Frontier::Stack(stack) => stack.push(0),
+            Frontier::Set(set) => { set.insert(0); },
+        }
         visited[0] = true;
 
-        while let Some(current) = stack.last().copied() {
-            let mut unvisited = Vec::new();
+        // Main generation loop
+        loop {
+            // Pick next cell from frontier based on strategy
+            let current = match &frontier {
+                Frontier::Stack(stack) => stack.last().copied(),
+                Frontier::Set(set) => {
+                    if set.is_empty() {
+                        None
+                    } else {
+                        let vec: Vec<usize> = set.iter().copied().collect();
+                        vec.choose(&mut rng).copied()
+                    }
+                }
+            };
 
+            let Some(current) = current else { break };
+
+            // Find unvisited neighbors
+            let mut unvisited = Vec::new();
             for (edge_idx, &neighbor_opt) in self.cells[current].neighbors.iter().enumerate() {
                 if let Some(neighbor) = neighbor_opt {
                     if !visited[neighbor] {
@@ -120,13 +152,19 @@ impl<S: Shape> GenericMaze<S> {
             }
 
             if unvisited.is_empty() {
-                stack.pop();
+                // No unvisited neighbors, remove from frontier
+                match &mut frontier {
+                    Frontier::Stack(stack) => { stack.pop(); },
+                    Frontier::Set(set) => { set.remove(&current); },
+                }
             } else {
+                // Pick a random unvisited neighbor
                 let &(next, edge_idx) = unvisited.choose(&mut rng).unwrap();
 
+                // Carve passage between current and next
                 self.cells[current].walls[edge_idx] = false;
 
-                // Find reverse edge
+                // Find and remove reverse edge
                 for (rev_idx, &neighbor_opt) in self.cells[next].neighbors.iter().enumerate() {
                     if neighbor_opt == Some(current) {
                         self.cells[next].walls[rev_idx] = false;
@@ -134,8 +172,12 @@ impl<S: Shape> GenericMaze<S> {
                     }
                 }
 
+                // Mark as visited and add to frontier
                 visited[next] = true;
-                stack.push(next);
+                match &mut frontier {
+                    Frontier::Stack(stack) => stack.push(next),
+                    Frontier::Set(set) => { set.insert(next); },
+                }
             }
         }
     }
