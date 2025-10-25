@@ -6,14 +6,13 @@ A Rust CLI tool that generates solvable mazes on **rectangular, triangular, hexa
 
 ## Features
 
-- **Four grid types**: Rectangular (4 neighbors), Triangular (3 neighbors), Hexagonal (6 neighbors), Octagonal (4-8 neighbors)
-- **Two difficulty levels**: Easy (long winding corridors) and Hard (more branching/dead ends)
-- **Generic maze implementation**: Uses Rust traits and generics for grid-agnostic algorithms
-- **Perfect mazes**: Exactly one path between any two points
-- **Automatic solving**: BFS pathfinding with red solution path
-- **Debug mode**: Optional cell numbering for debugging
-- **SVG output**: Scalable vector graphics viewable in any browser
-- **Configurable**: Custom dimensions and tunnel width
+- **Four grid types**: Classic rectangular, triangular, hexagonal, and octagonal grids
+- **Two difficulty levels**: Easy mode for relaxing long corridors, Hard mode for challenging branching puzzles
+- **Always solvable**: Every maze has exactly one path between entry and exit
+- **Built-in solutions**: Automatically generates a solution path for every maze
+- **SVG output**: Crisp, scalable graphics that look great at any size
+- **Interactive web version**: Play directly in your browser with mouse or touch controls
+- **Configurable**: Choose your size, difficulty, and grid style
 
 ## Quick Start
 
