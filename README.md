@@ -2,6 +2,8 @@
 
 A Rust CLI tool that generates solvable mazes on **rectangular, triangular, hexagonal, or octagonal grids** as SVG files with automatic solution generation.
 
+**[🎮 Try the Interactive Web Version!](https://htmlpreview.github.io/?https://github.com/jelson/rust_maze_generator/blob/main/maze.html)** - Play mazes directly in your browser with all grid types and difficulty levels.
+
 ## Features
 
 - **Four grid types**: Rectangular (4 neighbors), Triangular (3 neighbors), Hexagonal (6 neighbors), Octagonal (4-8 neighbors)
