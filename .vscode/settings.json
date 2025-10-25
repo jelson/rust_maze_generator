@@ -1,0 +1,8 @@
+{
+  "terminal.integrated.env.linux": {
+    "PATH": "${env:HOME}/miniconda3/envs/rust/bin:${env:PATH}"
+  },
+  "rust-analyzer.server.extraEnv": {
+    "PATH": "${env:HOME}/miniconda3/envs/rust/bin:${env:PATH}"
+  }
+}

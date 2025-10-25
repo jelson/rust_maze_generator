@@ -115,3 +115,65 @@ fn write_output(output_path: &str, svg_content: &str, svg_solution: &str) -> std
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_all_shapes_all_modes() -> std::io::Result<()> {
+        // Test cases: 4 shapes × 2 modes (debug and normal) = 8 test cases
+        let test_cases = vec![
+            ("rectangular", "debug", 5, 5, true),
+            ("rectangular", "normal", 75, 75, false),
+            ("triangular", "debug", 5, 5, true),
+            ("triangular", "normal", 75, 75, false),
+            ("hexagonal", "debug", 5, 5, true),
+            ("hexagonal", "normal", 75, 75, false),
+            ("octagonal", "debug", 5, 5, true),
+            ("octagonal", "normal", 75, 75, false),
+        ];
+
+        for (shape_name, mode, width, height, debug) in test_cases {
+            let output_file = format!("test_{}_{}x{}_{}.svg", shape_name, width, height, mode);
+
+            println!("Generating {} maze ({}x{}, {} mode)...", shape_name, width, height, mode);
+
+            // Use 3x larger tunnel width for debug mode (60 vs 20)
+            let tunnel_width = if debug { 60 } else { 20 };
+
+            let args = Args {
+                width,
+                height,
+                output: output_file.clone(),
+                tunnel_width,
+                grid_type: match shape_name {
+                    "rectangular" => GridType::Rectangular,
+                    "triangular" => GridType::Triangular,
+                    "hexagonal" => GridType::Hexagonal,
+                    "octagonal" => GridType::Octagonal,
+                    _ => panic!("Unknown shape"),
+                },
+                debug,
+                all_walls: false,
+            };
+
+            match args.grid_type {
+                GridType::Rectangular => process_maze::<RectShape>(&args)?,
+                GridType::Triangular => process_maze::<TriShape>(&args)?,
+                GridType::Hexagonal => process_maze::<HexShape>(&args)?,
+                GridType::Octagonal => process_maze::<OctShape>(&args)?,
+            }
+
+            // Verify the files were created
+            assert!(fs::metadata(&output_file).is_ok(), "Main SVG file should exist");
+
+            let solution_file = output_file.replace(".svg", "_solution.svg");
+            assert!(fs::metadata(&solution_file).is_ok(), "Solution SVG file should exist");
+        }
+
+        println!("\nAll 8 test cases completed successfully!");
+        Ok(())
+    }
+}
