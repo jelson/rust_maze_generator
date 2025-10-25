@@ -15,31 +15,23 @@ impl Shape for TriShape {
                 let idx = cell_index(x, y, width);
                 let is_up = (x + y) % 2 == 0;
 
+                // Left neighbor (always same regardless of triangle orientation)
+                if x > 0 {
+                    cells[idx].neighbors[0] = Some(cell_index(x - 1, y, width));
+                }
+                // Right neighbor (always same regardless of triangle orientation)
+                if x < width - 1 {
+                    cells[idx].neighbors[1] = Some(cell_index(x + 1, y, width));
+                }
+
+                // Third neighbor depends on triangle orientation
                 if is_up {
-                    // Up-pointing triangle: 0=left, 1=right, 2=bottom
-                    // Left neighbor (down-pointing triangle to the left)
-                    if x > 0 {
-                        cells[idx].neighbors[0] = Some(cell_index(x - 1, y, width));
-                    }
-                    // Right neighbor (down-pointing triangle to the right)
-                    if x < width - 1 {
-                        cells[idx].neighbors[1] = Some(cell_index(x + 1, y, width));
-                    }
-                    // Bottom neighbor (down-pointing triangle below)
+                    // Up-pointing triangle: bottom neighbor
                     if y < height - 1 {
                         cells[idx].neighbors[2] = Some(cell_index(x, y + 1, width));
                     }
                 } else {
-                    // Down-pointing triangle: 0=left, 1=right, 2=top
-                    // Left neighbor (up-pointing triangle to the left)
-                    if x > 0 {
-                        cells[idx].neighbors[0] = Some(cell_index(x - 1, y, width));
-                    }
-                    // Right neighbor (up-pointing triangle to the right)
-                    if x < width - 1 {
-                        cells[idx].neighbors[1] = Some(cell_index(x + 1, y, width));
-                    }
-                    // Top neighbor (up-pointing triangle above)
+                    // Down-pointing triangle: top neighbor
                     if y > 0 {
                         cells[idx].neighbors[2] = Some(cell_index(x, y - 1, width));
                     }
